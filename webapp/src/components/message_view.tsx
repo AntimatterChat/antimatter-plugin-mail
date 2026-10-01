@@ -10,6 +10,7 @@ import type {Folder, FullMessage} from '../client';
 import {displayName, formatAddresses, formatSize, fullDate, hue, initials} from '../utils';
 
 import Icon from './icon';
+import {useFolderName} from './message_list';
 import {messages} from './messages';
 import ShareForm from './share_form';
 
@@ -78,6 +79,7 @@ function MessageFrame({html, remoteImages, title}: {html: string; remoteImages: 
 // MessageView is the reading view of a message.
 export default function MessageView({folder, uid, folders, onBack, onReply, onForward, onChanged}: Props) {
     const {formatMessage, locale} = useIntl();
+    const folderName = useFolderName();
     const [msg, setMsg] = useState<FullMessage | null>(null);
     const [remoteImages, setRemoteImages] = useState(false);
     const [error, setError] = useState('');
@@ -239,7 +241,7 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                                     key={f.name}
                                     value={f.name}
                                 >
-                                    {f.name}
+                                    {folderName(f)}
                                 </option>
                             ))}
                         </select>
