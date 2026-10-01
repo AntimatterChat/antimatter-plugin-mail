@@ -94,6 +94,7 @@ func (p *Plugin) newRouter() *mux.Router {
 	api.HandleFunc("/messages/delete", p.handleDelete).Methods(http.MethodPost)
 	api.HandleFunc("/send", p.handleSend).Methods(http.MethodPost)
 	api.HandleFunc("/unread", p.handleGetUnread).Methods(http.MethodGet)
+	api.HandleFunc("/share", p.handleShare).Methods(http.MethodPost)
 
 	return router
 }
