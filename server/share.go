@@ -29,7 +29,7 @@ type shareRequest struct {
 // neutralizeMentions keeps the text of a message from mentioning anyone in the channel it's
 // shared to.
 func neutralizeMentions(s string) string {
-	return strings.ReplaceAll(s, "@", "@​")
+	return strings.ReplaceAll(s, "@", "@\u200b")
 }
 
 func formatAddress(a Address) string {

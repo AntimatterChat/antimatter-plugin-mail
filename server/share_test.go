@@ -25,7 +25,7 @@ func TestShareAttachment(t *testing.T) {
 	msg, err := parseMessage(multipartMessage, false)
 	require.NoError(t, err)
 	attachment := shareAttachment(msg)
-	assert.Equal(t, "Marie Laurent <marie@​example.com>", attachment.AuthorName)
+	assert.Equal(t, "Marie Laurent <marie@\u200bexample.com>", attachment.AuthorName)
 	assert.Equal(t, "Beam schedule draft — v2", attachment.Title)
 	assert.True(t, strings.HasPrefix(attachment.Text, "> Attached the draft"))
 	assert.Equal(t, int64(1790670660), attachment.Timestamp)
@@ -33,7 +33,7 @@ func TestShareAttachment(t *testing.T) {
 	assert.Equal(t, "schedule.pdf", attachment.Fields[0].Value)
 
 	// Mail can't mention people in the channel
-	assert.Equal(t, "Ping @​channel", neutralizeMentions("Ping @channel"))
+	assert.Equal(t, "Ping @\u200bchannel", neutralizeMentions("Ping @channel"))
 }
 
 func TestAPIShare(t *testing.T) {
