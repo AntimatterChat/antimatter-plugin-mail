@@ -3,6 +3,7 @@ module github.com/antimatterchat/antimatter-plugin-mail
 go 1.26.7
 
 require (
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/mattermost/mattermost/server/public v0.4.2
 	github.com/microcosm-cc/bluemonday v1.0.27
@@ -17,6 +18,7 @@ require (
 	github.com/beevik/etree v1.6.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.7 // indirect
