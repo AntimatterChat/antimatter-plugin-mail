@@ -442,7 +442,15 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 
 	var seqSet imap.SeqSet
 	seqSet.AddRange(uint32(first), uint32(last))
-	messages, err := s.client.Fetch(seqSet, &imap.FetchOptions{
+	if result.Messages, err = s.fetchSummaries(seqSet); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// fetchSummaries returns the summaries of messages of the selected folder, newest first.
+func (s *imapSession) fetchSummaries(set imap.NumSet) ([]MessageSummary, error) {
+	messages, err := s.client.Fetch(set, &imap.FetchOptions{
 		UID:           true,
 		Flags:         true,
 		Envelope:      true,
@@ -462,6 +470,7 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 	}
 	snippetParts := map[string][]snippetTarget{}
 
+	summaries := make([]MessageSummary, 0, len(messages))
 	for i, msg := range messages {
 		summary := MessageSummary{
 			UID:      uint32(msg.UID),
@@ -492,7 +501,7 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 				snippetParts[key] = append(snippetParts[key], snippetTarget{index: i, part: part})
 			}
 		}
-		result.Messages = append(result.Messages, summary)
+		summaries = append(summaries, summary)
 	}
 
 	// Fetch the beginning of the text parts, one FETCH per part path
@@ -500,7 +509,7 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 		var uids imap.UIDSet
 		byUID := map[imap.UID]snippetTarget{}
 		for _, target := range targets {
-			uid := imap.UID(result.Messages[target.index].UID)
+			uid := imap.UID(summaries[target.index].UID)
 			uids.AddNum(uid)
 			byUID[uid] = target
 		}
@@ -517,11 +526,11 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 				continue
 			}
 			raw := body.FindBodySection(section)
-			result.Messages[target.index].Snippet = snippetFromPart(raw, target.part.Encoding, target.part.Params["charset"], target.part.MediaType() == "text/html")
+			summaries[target.index].Snippet = snippetFromPart(raw, target.part.Encoding, target.part.Params["charset"], target.part.MediaType() == "text/html")
 		}
 	}
 
-	return result, nil
+	return summaries, nil
 }
 
 // MessageData is a whole message.
