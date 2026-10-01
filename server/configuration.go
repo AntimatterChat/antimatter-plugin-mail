@@ -5,6 +5,7 @@ package main
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -17,7 +18,43 @@ import (
 // configuration can change at any time, access to the configuration must be synchronized. The
 // strategy used in this plugin is to guard a pointer to the configuration, and clone the entire
 // struct whenever it changes. You may replace this with whatever strategy you choose.
-type configuration struct{}
+type configuration struct {
+	// AllowPrivateNetworks lets users connect to mail servers on loopback, private and link-local
+	// addresses. Off by default, so users can't reach the internal services of the network the
+	// server runs in.
+	AllowPrivateNetworks bool
+
+	// AllowInsecureConnections lets users connect to mail servers without TLS.
+	AllowInsecureConnections bool
+
+	// UnreadCheckMinutes is how often the unread count of a user's inbox is checked while they
+	// are online.
+	UnreadCheckMinutes int
+
+	// MaxMessageSizeMB is the largest message the plugin opens.
+	MaxMessageSizeMB int
+}
+
+const (
+	defaultUnreadCheckMinutes = 2
+	defaultMaxMessageSizeMB   = 25
+)
+
+// unreadCheckInterval returns how often unread counts are checked.
+func (c *configuration) unreadCheckInterval() time.Duration {
+	if c.UnreadCheckMinutes < 1 {
+		return defaultUnreadCheckMinutes * time.Minute
+	}
+	return time.Duration(c.UnreadCheckMinutes) * time.Minute
+}
+
+// maxMessageSize returns the size of the largest message the plugin opens, in bytes.
+func (c *configuration) maxMessageSize() int64 {
+	if c.MaxMessageSizeMB < 1 {
+		return defaultMaxMessageSizeMB << 20
+	}
+	return int64(c.MaxMessageSizeMB) << 20
+}
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
 // your configuration has reference types.

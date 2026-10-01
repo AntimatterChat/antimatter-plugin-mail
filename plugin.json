@@ -22,6 +22,35 @@
     "settings_schema": {
         "header": "Users connect their own mailbox over IMAP (reading) and SMTP (sending). Passwords are stored encrypted; users should use app passwords where their provider offers them.",
         "footer": "",
-        "settings": []
+        "settings": [
+            {
+                "key": "AllowPrivateNetworks",
+                "display_name": "Allow mail servers on private networks",
+                "type": "bool",
+                "default": false,
+                "help_text": "When true, users can connect to mail servers on loopback, private and link-local addresses, such as a mail server on your internal network. Leave it off unless your mail server is on such a network: it would also let users reach the other internal services of the network this server runs in."
+            },
+            {
+                "key": "AllowInsecureConnections",
+                "display_name": "Allow unencrypted connections",
+                "type": "bool",
+                "default": false,
+                "help_text": "When true, users can connect to mail servers without TLS. Their passwords and mail then cross the network unencrypted."
+            },
+            {
+                "key": "UnreadCheckMinutes",
+                "display_name": "Unread check interval (minutes)",
+                "type": "number",
+                "default": 2,
+                "help_text": "How often the inbox of each online user is checked for new mail, to update their unread count."
+            },
+            {
+                "key": "MaxMessageSizeMB",
+                "display_name": "Largest message size (MB)",
+                "type": "number",
+                "default": 25,
+                "help_text": "Messages larger than this can't be opened in Antimatter."
+            }
+        ]
     }
 }
