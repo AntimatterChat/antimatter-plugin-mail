@@ -2,7 +2,7 @@
 // See LICENSE.txt for license information.
 
 import type {FullMessage} from './client';
-import {forwardDraft, initials, listDate, parseAddresses, quote, replyDraft} from './utils';
+import {draftContent, draftFromMessage, forwardDraft, initials, listDate, parseAddresses, quote, replyDraft} from './utils';
 
 const message: FullMessage = {
     folder: 'INBOX',
@@ -13,11 +13,13 @@ const message: FullMessage = {
     from: [{name: 'Marie Laurent', email: 'marie@example.com'}],
     to: [{name: 'Ada', email: 'ada@example.com'}, {email: 'lena@example.com'}],
     cc: [{email: 'kenji@example.com'}],
+    bcc: [],
     reply_to: [],
     subject: 'Beam schedule',
     date: 0,
     unread: false,
     flagged: false,
+    draft: false,
     text: 'Wed or Fri?\r\n\r\nMarie',
     remote_images: 0,
     attachments: [],
@@ -81,5 +83,32 @@ describe('drafts', () => {
 
     test('quote', () => {
         expect(quote('a\n\nb\n')).toBe('> a\n>\n> b');
+    });
+});
+
+describe('saved drafts', () => {
+    test('reopen with their recipients, thread and Message-ID', () => {
+        const draft = draftFromMessage({
+            ...message,
+            draft: true,
+            in_reply_to: ['draft-1@example.com'],
+            bcc: [{email: 'boss@example.com'}],
+        });
+        expect(draft).toEqual({
+            to: 'Ada <ada@example.com>, lena@example.com',
+            cc: 'kenji@example.com',
+            bcc: 'boss@example.com',
+            subject: 'Beam schedule',
+            text: 'Wed or Fri?\n\nMarie',
+            inReplyTo: 'draft-1@example.com',
+            references: ['draft-1@example.com'],
+            messageId: 'draft-2@example.com',
+        });
+    });
+
+    test('change when what they say changes', () => {
+        const draft = draftFromMessage(message);
+        expect(draftContent({...draft, messageId: 'other@example.com'})).toBe(draftContent(draft));
+        expect(draftContent({...draft, bcc: 'boss@example.com'})).not.toBe(draftContent(draft));
     });
 });

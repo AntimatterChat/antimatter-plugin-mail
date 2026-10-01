@@ -55,6 +55,7 @@ export type MessageSummary = {
     unread: boolean;
     flagged: boolean;
     answered: boolean;
+    draft: boolean;
     has_attachments: boolean;
     snippet: string;
 };
@@ -83,11 +84,13 @@ export type FullMessage = {
     from: Address[];
     to: Address[];
     cc: Address[];
+    bcc: Address[];
     reply_to: Address[];
     subject: string;
     date: number;
     unread: boolean;
     flagged: boolean;
+    draft: boolean;
     text: string;
     html?: string;
     remote_images: number;
@@ -103,6 +106,15 @@ export type OutgoingMessage = {
     in_reply_to?: string;
     references?: string[];
     reply_to_message?: {folder: string; uid: number};
+
+    // Identifies a draft across its saves; sending the message deletes the draft
+    message_id?: string;
+};
+
+export type SavedDraft = {
+    folder: string;
+    uid: number;
+    message_id: string;
 };
 
 export class ClientError extends Error {
@@ -195,6 +207,14 @@ export function deleteMessages(folder: string, uids: number[]) {
 
 export function sendMessage(message: OutgoingMessage) {
     return request<{saved_copy: boolean}>('POST', '/send', message);
+}
+
+export function saveDraft(message: OutgoingMessage) {
+    return request<SavedDraft>('PUT', '/draft', message);
+}
+
+export function deleteDraft(messageId: string) {
+    return request<unknown>('DELETE', `/draft?${query({message_id: messageId})}`);
 }
 
 export async function getUnread(refresh = false) {

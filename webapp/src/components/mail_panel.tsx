@@ -8,9 +8,9 @@ import {useStore} from 'react-redux';
 import {loadUnread, setUnread} from '../actions';
 import {am, own} from '../class_names';
 import * as client from '../client';
-import type {Account, Folder, FullMessage} from '../client';
+import type {Account, Folder, FullMessage, MessageSummary} from '../client';
 import type {PluginStore} from '../types/host';
-import {displayName, emptyDraft, forwardDraft, formatAddresses, fullDate, replyDraft, type Draft} from '../utils';
+import {displayName, draftFromMessage, emptyDraft, forwardDraft, formatAddresses, fullDate, replyDraft, type Draft} from '../utils';
 import {isFusionUI} from '../web_ui';
 
 import AccountForm from './account_form';
@@ -89,6 +89,23 @@ export default function MailPanel() {
         setReloadKey((k) => k + 1);
     };
 
+    // Drafts open in the editor
+    const open = async (message: MessageSummary) => {
+        setNotice('');
+        const current = folders.find((f) => f.name === folder);
+        if (!message.draft && current?.role !== 'drafts') {
+            setView({kind: 'message', uid: message.uid});
+            return;
+        }
+        try {
+            const msg = await client.getMessage(folder, message.uid);
+            setError('');
+            setView({kind: 'compose', draft: draftFromMessage(msg), back: {kind: 'list'}});
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    };
+
     const reply = (msg: FullMessage, all: boolean) => {
         const sender = msg.from[0];
         const header = formatMessage(messages.replyHeader, {date: fullDate(msg.date, locale), name: displayName(sender)});
@@ -165,7 +182,12 @@ export default function MailPanel() {
                     setView(view.back.kind === 'compose' ? {kind: 'list'} : view.back);
                     onChanged();
                 }}
-                onCancel={() => setView(view.back)}
+                onClose={() => {
+                    // The drafts folder may have changed
+                    setView(view.back);
+                    setReloadKey((k) => k + 1);
+                    loadFolders();
+                }}
             />
         );
     } else {
@@ -178,10 +200,7 @@ export default function MailPanel() {
                     setNotice('');
                     setFolder(name);
                 }}
-                onOpen={(uid) => {
-                    setNotice('');
-                    setView({kind: 'message', uid});
-                }}
+                onOpen={open}
                 onCompose={() => setView({kind: 'compose', draft: emptyDraft, back: {kind: 'list'}})}
                 onSettings={() => setView({kind: 'settings'})}
                 onRefresh={refresh}

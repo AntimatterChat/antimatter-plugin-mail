@@ -21,7 +21,7 @@ type Props = {
     // Changes when the list must be loaded again
     reloadKey: number;
     onFolderChange: (folder: string) => void;
-    onOpen: (uid: number) => void;
+    onOpen: (message: MessageSummary) => void;
     onCompose: () => void;
     onSettings: () => void;
     onRefresh: () => void;
@@ -42,7 +42,7 @@ export function useFolderName() {
     }, [formatMessage]);
 }
 
-function MessageRow({message, sentFolder, onOpen}: {message: MessageSummary; sentFolder: boolean; onOpen: (uid: number) => void}) {
+function MessageRow({message, sentFolder, onOpen}: {message: MessageSummary; sentFolder: boolean; onOpen: (summary: MessageSummary) => void}) {
     const {formatMessage, locale} = useIntl();
 
     // The sent folder shows who messages went to
@@ -54,7 +54,7 @@ function MessageRow({message, sentFolder, onOpen}: {message: MessageSummary; sen
     return (
         <button
             className={am('app-row', {unread: message.unread})}
-            onClick={() => onOpen(message.uid)}
+            onClick={() => onOpen(message)}
         >
             <span
                 className={am('av', 'sm')}

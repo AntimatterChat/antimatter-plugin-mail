@@ -18,6 +18,10 @@ own mailbox over IMAP (reading) and SMTP (sending).
 - **Organise.** Mark as unread, move to another folder, delete (to the trash, then for good).
 - **Write.** New messages, replies (to the sender or everyone, threaded with In-Reply-To and
   References) and forwards, in plain text. Sent mail is kept in the sent folder.
+- **Drafts.** The message being written is saved to the drafts folder (flagged `\Draft`) a few
+  seconds after each change and when it's closed; the drafts folder is created if the server has
+  none. Drafts open in the editor from the drafts folder, and sending one deletes it. Each save
+  replaces the previous one, found by its Message-ID.
 - **Share to a channel.** Post a summary of a message (sender, subject, date, the beginning of the
   text, attachment names) into a channel, with a comment. The message can't mention anyone.
 

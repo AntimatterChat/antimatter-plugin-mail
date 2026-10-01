@@ -81,7 +81,12 @@ export const messages = defineMessages({
     sending: {id: 'mail.sending', defaultMessage: 'Sending…'},
     showCcBcc: {id: 'mail.show_cc_bcc', defaultMessage: 'Cc and Bcc'},
     discard: {id: 'mail.discard', defaultMessage: 'Discard'},
-    discardConfirm: {id: 'mail.discard.confirm', defaultMessage: 'Discard this message?'},
+    discardConfirm: {id: 'mail.discard.confirm', defaultMessage: 'Discard this message? Its draft is deleted too.'},
+    saveDraft: {id: 'mail.draft.save', defaultMessage: 'Save draft'},
+    saveAndClose: {id: 'mail.draft.save_and_close', defaultMessage: 'Save the draft and close'},
+    draftSaving: {id: 'mail.draft.saving', defaultMessage: 'Saving the draft…'},
+    draftSaved: {id: 'mail.draft.saved', defaultMessage: 'Draft saved at {time}'},
+    draftSaveFailed: {id: 'mail.draft.save_failed', defaultMessage: 'The draft couldn’t be saved: {error}'},
     sent: {id: 'mail.sent', defaultMessage: 'Message sent.'},
     noRecipients: {id: 'mail.no_recipients', defaultMessage: 'Add at least one recipient.'},
 

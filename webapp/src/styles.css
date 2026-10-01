@@ -446,6 +446,10 @@
     font-size: 12px;
 }
 
+.amm-note.amm-failed {
+    color: var(--amm-danger);
+}
+
 .amm-body {
     min-height: 220px;
 }

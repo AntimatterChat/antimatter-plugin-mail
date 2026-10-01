@@ -130,6 +130,9 @@ export type Draft = {
     inReplyTo?: string;
     references?: string[];
     replyTo?: {folder: string; uid: number};
+
+    // The Message-ID of the saved draft, once saved
+    messageId?: string;
 };
 
 export const emptyDraft: Draft = {to: '', cc: '', bcc: '', subject: '', text: ''};
@@ -170,4 +173,23 @@ export function forwardDraft(msg: FullMessage, header: string): Draft {
         subject: prefixed(msg.subject, 'Fwd'),
         text: `\n\n${header}\n\n${msg.text.replace(/\r\n/g, '\n').trimEnd()}\n`,
     };
+}
+
+// draftFromMessage reopens a draft saved in the drafts folder.
+export function draftFromMessage(msg: FullMessage): Draft {
+    return {
+        to: formatAddresses(msg.to),
+        cc: formatAddresses(msg.cc),
+        bcc: formatAddresses(msg.bcc),
+        subject: msg.subject,
+        text: msg.text.replace(/\r\n/g, '\n'),
+        ...(msg.in_reply_to.length > 0 ? {inReplyTo: msg.in_reply_to[0]} : {}),
+        references: msg.references,
+        ...(msg.message_id ? {messageId: msg.message_id} : {}),
+    };
+}
+
+// draftContent returns what a draft says, to tell whether it changed since it was saved.
+export function draftContent(draft: Draft): string {
+    return JSON.stringify([draft.to, draft.cc, draft.bcc, draft.subject, draft.text]);
 }
