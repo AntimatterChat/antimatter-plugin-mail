@@ -6,6 +6,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/emersion/go-imap/v2"
 	"github.com/pkg/errors"
 )
 
@@ -23,11 +24,17 @@ func newAPIError(status int, msg string) *apiError {
 	return &apiError{status: status, err: errors.New(msg)}
 }
 
-// statusFor returns the HTTP status for an error returned by the plugin's operations.
+// statusFor returns the HTTP status for an error returned by the plugin's operations. Errors
+// returned by the user's mail server are shown to the user.
 func statusFor(err error) int {
 	var apiErr *apiError
-	if errors.As(err, &apiErr) {
+	var imapErr *imap.Error
+	switch {
+	case errors.As(err, &apiErr):
 		return apiErr.status
+	case errors.As(err, &imapErr):
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
 	}
-	return http.StatusInternalServerError
 }
