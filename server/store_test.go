@@ -57,6 +57,29 @@ func TestStoreAccount(t *testing.T) {
 	assert.Nil(t, account)
 }
 
+func TestStoreOAuthAccount(t *testing.T) {
+	store, kv := newTestStore(t)
+
+	account := testAccount()
+	account.IMAPPassword, account.SMTPPassword = "", ""
+	account.OAuth = &OAuthGrant{Provider: "google", RefreshToken: "refresh-secret"}
+	require.NoError(t, account.Validate())
+	require.NoError(t, store.SaveAccount("user1", account))
+	assert.NotContains(t, string(kv.data[accountKey("user1")]), "refresh-secret")
+	assert.NotContains(t, string(kv.data[accountKey("user1")]), "imap_password")
+
+	stored, err := store.GetAccount("user1")
+	require.NoError(t, err)
+	assert.Equal(t, account, stored)
+
+	kv.data[accountKey("user2")] = kv.data[accountKey("user1")]
+	_, err = store.GetAccount("user2")
+	assert.Error(t, err)
+
+	account.OAuth.RefreshToken = ""
+	assert.Error(t, account.Validate())
+}
+
 func TestAccountValidate(t *testing.T) {
 	assert.NoError(t, testAccount().Validate())
 

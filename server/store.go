@@ -80,13 +80,28 @@ type Account struct {
 
 	IMAPPassword string `json:"-"`
 	SMTPPassword string `json:"-"`
+
+	// OAuth is set for accounts that sign in with a provider (Google, Microsoft) rather than with
+	// passwords.
+	OAuth *OAuthGrant `json:"oauth,omitempty"`
+}
+
+// OAuthGrant is the access a provider granted to a user's mailbox. The refresh token is only kept
+// decrypted in memory.
+type OAuthGrant struct {
+	Provider     string `json:"provider"`
+	RefreshToken string `json:"-"`
 }
 
 // connectionKey identifies the settings IMAP connections are made with: a connection made with
 // other settings mustn't be reused.
 func (a *Account) connectionKey() string {
+	provider := ""
+	if a.OAuth != nil {
+		provider = a.OAuth.Provider
+	}
 	sum := sha256.Sum256([]byte(strings.Join([]string{
-		a.IMAP.Host, strconv.Itoa(a.IMAP.Port), string(a.IMAP.Security), a.IMAP.Username, a.IMAPPassword,
+		a.IMAP.Host, strconv.Itoa(a.IMAP.Port), string(a.IMAP.Security), a.IMAP.Username, a.IMAPPassword, provider,
 	}, "\x00")))
 	return hex.EncodeToString(sum[:])
 }
@@ -102,17 +117,25 @@ func (a *Account) Validate() error {
 	if err := a.SMTP.validate("SMTP"); err != nil {
 		return err
 	}
+	if a.OAuth != nil {
+		if a.OAuth.Provider == "" || a.OAuth.RefreshToken == "" {
+			return newAPIError(http.StatusBadRequest, "the sign-in with the provider is incomplete")
+		}
+		return nil
+	}
 	if a.IMAPPassword == "" || a.SMTPPassword == "" {
 		return newAPIError(http.StatusBadRequest, "a password is required")
 	}
 	return nil
 }
 
-// storedAccount is an account as stored in the KV store, with encrypted passwords.
+// storedAccount is an account as stored in the KV store, with encrypted passwords or refresh
+// token.
 type storedAccount struct {
 	Account
-	IMAPPasswordSealed string `json:"imap_password"`
-	SMTPPasswordSealed string `json:"smtp_password"`
+	IMAPPasswordSealed string `json:"imap_password,omitempty"`
+	SMTPPasswordSealed string `json:"smtp_password,omitempty"`
+	RefreshTokenSealed string `json:"refresh_token,omitempty"`
 	UpdatedAt          int64  `json:"updated_at"`
 }
 
@@ -151,6 +174,12 @@ func (s *Store) GetAccount(userID string) (*Account, error) {
 	account := stored.Account
 
 	var err error
+	if account.OAuth != nil {
+		if account.OAuth.RefreshToken, err = s.box.Open(stored.RefreshTokenSealed, secretContext(userID, "oauth_refresh")); err != nil {
+			return nil, errors.Wrap(err, "failed to decrypt the refresh token")
+		}
+		return &account, nil
+	}
 	if account.IMAPPassword, err = s.box.Open(stored.IMAPPasswordSealed, secretContext(userID, "imap")); err != nil {
 		return nil, errors.Wrap(err, "failed to decrypt the IMAP password")
 	}
@@ -165,11 +194,17 @@ func (s *Store) SaveAccount(userID string, account *Account) error {
 	stored := storedAccount{Account: *account, UpdatedAt: model.GetMillis()}
 
 	var err error
-	if stored.IMAPPasswordSealed, err = s.box.Seal(account.IMAPPassword, secretContext(userID, "imap")); err != nil {
-		return err
-	}
-	if stored.SMTPPasswordSealed, err = s.box.Seal(account.SMTPPassword, secretContext(userID, "smtp")); err != nil {
-		return err
+	if account.OAuth != nil {
+		if stored.RefreshTokenSealed, err = s.box.Seal(account.OAuth.RefreshToken, secretContext(userID, "oauth_refresh")); err != nil {
+			return err
+		}
+	} else {
+		if stored.IMAPPasswordSealed, err = s.box.Seal(account.IMAPPassword, secretContext(userID, "imap")); err != nil {
+			return err
+		}
+		if stored.SMTPPasswordSealed, err = s.box.Seal(account.SMTPPassword, secretContext(userID, "smtp")); err != nil {
+			return err
+		}
 	}
 
 	data, err := json.Marshal(stored)
