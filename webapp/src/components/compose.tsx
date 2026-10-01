@@ -7,7 +7,7 @@ import {useIntl} from 'react-intl';
 import {am, own} from '../class_names';
 import * as client from '../client';
 import type {OutgoingMessage} from '../client';
-import {draftContent, parseAddresses, type Draft} from '../utils';
+import {draftContent, formatSize, movedAttachments, parseAddresses, type Draft} from '../utils';
 
 import Icon from './icon';
 import {messages} from './messages';
@@ -36,7 +36,14 @@ function outgoing(draft: Draft): OutgoingMessage {
         references: draft.references,
         reply_to_message: draft.replyTo,
         message_id: draft.messageId,
+        attachments: (draft.attachments || []).map(({folder, uid, id}) => ({folder, uid, id})),
     };
+}
+
+// moveAttachments returns the update of a draft after a save, pointing its attachments to the
+// saved version.
+function moveAttachments(saved: Draft, result: client.SavedDraft) {
+    return (current: Draft) => ({...current, attachments: movedAttachments(current.attachments || [], saved.attachments || [], result)});
 }
 
 // Compose writes a new message, a reply or a forward. The message is saved to the drafts folder
@@ -70,6 +77,11 @@ export default function Compose({draft: initial, onSent, onClose}: Props) {
                 const saved = await client.saveDraft({...outgoing(toSave), message_id: messageId.current});
                 messageId.current = saved.message_id;
                 savedContent.current = content;
+
+                // The earlier version the attachments came from is gone
+                if (toSave.attachments?.length) {
+                    setDraft(moveAttachments(toSave, saved));
+                }
                 setSaveStatus({state: 'saved', at: Date.now()});
                 return true;
             } catch (err) {
@@ -235,6 +247,35 @@ export default function Compose({draft: initial, onSent, onClose}: Props) {
                     }}
                 />
             </label>
+            {Boolean(draft.attachments?.length) && (
+                <div className={own('attachments')}>
+                    {draft.attachments?.map((a) => (
+                        <span
+                            key={a.key}
+                            className={am('chip-btn')}
+                        >
+                            <Icon
+                                name='attach'
+                                size='xs'
+                            />
+                            <span className={own('attachment-name')}>{a.filename}</span>
+                            <span className={am('sub')}>{formatSize(a.size)}</span>
+                            <button
+                                type='button'
+                                className={own('attachment-remove')}
+                                title={formatMessage(messages.removeAttachment, {filename: a.filename})}
+                                aria-label={formatMessage(messages.removeAttachment, {filename: a.filename})}
+                                onClick={() => setDraft({...draft, attachments: draft.attachments?.filter((other) => other.key !== a.key)})}
+                            >
+                                <Icon
+                                    name='x'
+                                    size='xs'
+                                />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
             {error && <div className={own('error')}>{error}</div>}
             {status && (
                 <div

@@ -1,7 +1,7 @@
 // Copyright (c) 2026-present Antimatter contributors.
 // See LICENSE.txt for license information.
 
-import type {Address, FullMessage} from './client';
+import type {Address, AttachmentRef, FullMessage} from './client';
 
 // displayName returns the name to show for an address.
 export function displayName(address?: Address): string {
@@ -133,7 +133,27 @@ export type Draft = {
 
     // The Message-ID of the saved draft, once saved
     messageId?: string;
+
+    // Attachments of stored messages, such as those of a forwarded message
+    attachments?: DraftAttachment[];
 };
+
+// DraftAttachment is a stored attachment a draft attaches again. Its key stays the same when the
+// attachment moves to a new version of the draft.
+export type DraftAttachment = AttachmentRef & {
+    key: string;
+    filename: string;
+    size: number;
+};
+
+let lastAttachmentKey = 0;
+
+function draftAttachments(msg: FullMessage): DraftAttachment[] {
+    return msg.attachments.map((a) => {
+        lastAttachmentKey++;
+        return {key: String(lastAttachmentKey), folder: msg.folder, uid: msg.uid, id: a.id, filename: a.filename, size: a.size};
+    });
+}
 
 export const emptyDraft: Draft = {to: '', cc: '', bcc: '', subject: '', text: ''};
 
@@ -172,6 +192,7 @@ export function forwardDraft(msg: FullMessage, header: string): Draft {
         ...emptyDraft,
         subject: prefixed(msg.subject, 'Fwd'),
         text: `\n\n${header}\n\n${msg.text.replace(/\r\n/g, '\n').trimEnd()}\n`,
+        attachments: draftAttachments(msg),
     };
 }
 
@@ -186,10 +207,23 @@ export function draftFromMessage(msg: FullMessage): Draft {
         ...(msg.in_reply_to.length > 0 ? {inReplyTo: msg.in_reply_to[0]} : {}),
         references: msg.references,
         ...(msg.message_id ? {messageId: msg.message_id} : {}),
+        attachments: draftAttachments(msg),
     };
 }
 
 // draftContent returns what a draft says, to tell whether it changed since it was saved.
 export function draftContent(draft: Draft): string {
-    return JSON.stringify([draft.to, draft.cc, draft.bcc, draft.subject, draft.text]);
+    return JSON.stringify([draft.to, draft.cc, draft.bcc, draft.subject, draft.text, (draft.attachments || []).map((a) => a.key)]);
+}
+
+// movedAttachments points the attachments of a draft to where a save stored them: saved lists the
+// attachments of the saved version, in the order of those of the draft that was saved.
+export function movedAttachments(current: DraftAttachment[], wasSaved: DraftAttachment[], saved: {folder: string; uid: number; attachments: Array<{id: string}>}): DraftAttachment[] {
+    return current.map((a) => {
+        const index = wasSaved.findIndex((s) => s.key === a.key);
+        if (index < 0 || !saved.attachments[index]) {
+            return a;
+        }
+        return {...a, folder: saved.folder, uid: saved.uid, id: saved.attachments[index].id};
+    });
 }

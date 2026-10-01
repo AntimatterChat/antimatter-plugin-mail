@@ -453,3 +453,41 @@
 .amm-body {
     min-height: 220px;
 }
+
+.amm-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.amm-attachments > * {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.amm-attachment-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.amm-root .amm-attachment-remove {
+    display: grid;
+    place-items: center;
+    padding: 2px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.amm-root .amm-attachment-remove:hover {
+    background: var(--amm-hover);
+}
+
+.amm-attachment-remove .am-ic,
+.amm-attachment-remove .amm-ic {
+    margin: 0;
+}

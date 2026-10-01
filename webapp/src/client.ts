@@ -118,12 +118,24 @@ export type OutgoingMessage = {
 
     // Identifies a draft across its saves; sending the message deletes the draft
     message_id?: string;
+
+    // Attachments of stored messages to attach again
+    attachments?: AttachmentRef[];
+};
+
+export type AttachmentRef = {
+    folder: string;
+    uid: number;
+    id: string;
 };
 
 export type SavedDraft = {
     folder: string;
     uid: number;
     message_id: string;
+
+    // Where the attachments of the draft now are
+    attachments: Attachment[];
 };
 
 export class ClientError extends Error {

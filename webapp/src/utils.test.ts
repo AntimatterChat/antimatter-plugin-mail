@@ -2,7 +2,7 @@
 // See LICENSE.txt for license information.
 
 import type {FullMessage} from './client';
-import {draftContent, draftFromMessage, forwardDraft, initials, listDate, parseAddresses, quote, replyDraft} from './utils';
+import {draftContent, draftFromMessage, forwardDraft, movedAttachments, initials, listDate, parseAddresses, quote, replyDraft} from './utils';
 
 const message: FullMessage = {
     folder: 'INBOX',
@@ -103,7 +103,25 @@ describe('saved drafts', () => {
             inReplyTo: 'draft-1@example.com',
             references: ['draft-1@example.com'],
             messageId: 'draft-2@example.com',
+            attachments: [],
         });
+    });
+
+    test('keep forwarded attachments where their last save stored them', () => {
+        const forwarded = forwardDraft({
+            ...message,
+            attachments: [
+                {id: '2', filename: 'a.pdf', content_type: 'application/pdf', size: 10},
+                {id: '3', filename: 'b.pdf', content_type: 'application/pdf', size: 20},
+            ],
+        }, 'header');
+        const attachments = forwarded.attachments || [];
+        expect(attachments.map(({folder, uid, id}) => ({folder, uid, id}))).toEqual([{folder: 'INBOX', uid: 7, id: '2'}, {folder: 'INBOX', uid: 7, id: '3'}]);
+
+        // b.pdf was removed while a save of both was running
+        const moved = movedAttachments([attachments[1]], attachments, {folder: 'Drafts', uid: 3, attachments: [{id: '2'}, {id: '3'}]});
+        expect(moved).toEqual([{...attachments[1], folder: 'Drafts', uid: 3, id: '3'}]);
+        expect(draftContent({...forwarded, attachments: moved})).toBe(draftContent({...forwarded, attachments: [attachments[1]]}));
     });
 
     test('change when what they say changes', () => {

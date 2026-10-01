@@ -90,6 +90,7 @@ export const messages = defineMessages({
     discard: {id: 'mail.discard', defaultMessage: 'Discard'},
     discardConfirm: {id: 'mail.discard.confirm', defaultMessage: 'Discard this message? Its draft is deleted too.'},
     saveDraft: {id: 'mail.draft.save', defaultMessage: 'Save draft'},
+    removeAttachment: {id: 'mail.attachment.remove', defaultMessage: 'Remove {filename}'},
     saveAndClose: {id: 'mail.draft.save_and_close', defaultMessage: 'Save the draft and close'},
     draftSaving: {id: 'mail.draft.saving', defaultMessage: 'Saving the draft…'},
     draftSaved: {id: 'mail.draft.saved', defaultMessage: 'Draft saved at {time}'},
