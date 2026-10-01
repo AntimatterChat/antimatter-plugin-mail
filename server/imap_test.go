@@ -235,3 +235,55 @@ func TestMessageOperations(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stored, "there is no junk folder")
 }
+
+func TestIdleInbox(t *testing.T) {
+	e := newTestEnv(t)
+	e.connect(t)
+	e.imap.add(t, "INBOX", simpleMessage("one", "first"))
+
+	reports := make(chan int, 10)
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- e.p.idleInbox(e.userID, stop, func(unread int) { reports <- unread })
+	}()
+	next := func() int {
+		select {
+		case unread := <-reports:
+			return unread
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "no unread count reported")
+		}
+		return -1
+	}
+	assert.Equal(t, 1, next())
+	assert.Equal(t, 1, e.p.limiter.userConnections(e.userID), "IDLE takes a connection slot")
+
+	// New mail, once IDLE runs: the test server only tells about updates during commands
+	time.Sleep(500 * time.Millisecond)
+	e.imap.add(t, "INBOX", simpleMessage("two", "second"))
+	assert.Equal(t, 2, next())
+
+	// Read from another client
+	other := e.imap.dial(t)
+	require.NoError(t, other.SetFlag("INBOX", []uint32{1, 2}, imap.FlagSeen, true))
+	assert.Equal(t, 0, next())
+
+	close(stop)
+	require.NoError(t, <-done)
+	assert.Zero(t, e.p.limiter.userConnections(e.userID))
+}
+
+func TestIdleInboxNeedsAFreeSlot(t *testing.T) {
+	e := newTestEnv(t)
+	e.connect(t)
+
+	e.p.limiter = newConnLimiter(1, 1, time.Millisecond)
+	release, err := e.p.limiter.acquire(e.userID)
+	require.NoError(t, err)
+	defer release()
+	err = e.p.idleInbox(e.userID, make(chan struct{}), func(int) {})
+	assert.ErrorIs(t, err, errIdleNoSlot)
+}

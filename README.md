@@ -21,8 +21,12 @@ own mailbox over IMAP (reading) and SMTP (sending).
 - **Share to a channel.** Post a summary of a message (sender, subject, date, the beginning of the
   text, attachment names) into a channel, with a comment. The message can't mention anyone.
 
-The server checks the inbox of each online user every few minutes (polling with STATUS, at most ten
-at once) and tells them when the unread count changes.
+The server watches the inbox of each online user and tells them when the unread count changes. It
+keeps an IMAP IDLE connection to the inbox where the server supports IDLE, so new mail shows up
+right away; it checks the other inboxes every few minutes (with STATUS, at most ten at once), and
+falls back to that when IDLE fails or no connection slot is free. Requests reuse the connections of
+recent requests for a few minutes. Each user has at most four connections open at once, and the
+plugin two hundred overall, IDLE and unused connections included; IDLE takes at most half of them.
 
 ## Configuration
 

@@ -82,6 +82,8 @@ type imapOptions struct {
 	allowInsecure bool
 	// tlsConfig is nil for the default TLS configuration (tests set their own CA).
 	tlsConfig *tls.Config
+	// unilateral handles the updates the server sends on its own, such as new messages.
+	unilateral *imapclient.UnilateralDataHandler
 }
 
 // imapSession is a logged in IMAP connection.
@@ -104,7 +106,7 @@ func connectionError(what string, err error) error {
 // dialIMAP connects and logs in to an IMAP server.
 func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imapSession, error) {
 	address := net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port))
-	clientOptions := &imapclient.Options{Dialer: opts.dialer, TLSConfig: opts.tlsConfig}
+	clientOptions := &imapclient.Options{Dialer: opts.dialer, TLSConfig: opts.tlsConfig, UnilateralDataHandler: opts.unilateral}
 
 	var client *imapclient.Client
 	var err error

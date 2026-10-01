@@ -163,3 +163,140 @@ func TestUnreadWatcherLimitsChecks(t *testing.T) {
 	assert.Empty(t, w.tick(), "the running checks hold all the slots")
 	close(release)
 }
+
+// fakeIdler is an idleFunc the tests drive: each call waits for counts to report on its channel.
+type fakeIdler struct {
+	mu      sync.Mutex
+	err     error
+	running map[string]chan int
+	calls   int
+}
+
+func (f *fakeIdler) idle(userID string, stop <-chan struct{}, report func(int)) error {
+	f.mu.Lock()
+	f.calls++
+	if f.err != nil {
+		err := f.err
+		f.mu.Unlock()
+		return err
+	}
+	counts := make(chan int)
+	f.running[userID] = counts
+	f.mu.Unlock()
+
+	defer func() {
+		f.mu.Lock()
+		delete(f.running, userID)
+		f.mu.Unlock()
+	}()
+	for {
+		select {
+		case <-stop:
+			return nil
+		case unread, ok := <-counts:
+			if !ok {
+				return errors.New("connection lost")
+			}
+			report(unread)
+		}
+	}
+}
+
+func (f *fakeIdler) channel(userID string) chan int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.running[userID]
+}
+
+func (f *fakeIdler) setErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.err = err
+}
+
+func (f *fakeIdler) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+func TestUnreadWatcherIdles(t *testing.T) {
+	w, inboxes, now := newTestWatcher()
+	idler := &fakeIdler{running: map[string]chan int{}}
+	w.idle = idler.idle
+	inboxes.set("ada", 2, false)
+	w.Touch("ada")
+
+	assert.Empty(t, tickAndWait(t, w), "the inbox is watched with IDLE instead of checked")
+	require.Eventually(t, func() bool { return idler.channel("ada") != nil }, time.Second, time.Millisecond)
+	idler.channel("ada") <- 4
+	idler.channel("ada") <- 4
+	idler.channel("ada") <- 5
+	require.Eventually(t, func() bool { return len(inboxes.publishedTo("ada")) == 2 }, time.Second, time.Millisecond)
+	assert.Equal(t, []int{4, 5}, inboxes.publishedTo("ada"))
+
+	// The count stays fresh while IDLE runs, without checks
+	now.Add(time.Hour)
+	w.Touch("ada")
+	assert.Empty(t, tickAndWait(t, w))
+	unread, ok := w.Cached("ada")
+	assert.True(t, ok)
+	assert.Equal(t, 5, unread)
+	inboxes.mu.Lock()
+	assert.Zero(t, inboxes.checks["ada"])
+	inboxes.mu.Unlock()
+
+	// When IDLE fails the inbox is checked again, and IDLE is retried later
+	close(idler.channel("ada"))
+	require.Eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.inboxes["ada"].stopIdle == nil
+	}, time.Second, time.Millisecond)
+	assert.Equal(t, []string{"ada"}, tickAndWait(t, w))
+	assert.Equal(t, 1, idler.callCount())
+	now.Add(idleRetryAfter)
+	assert.Empty(t, tickAndWait(t, w))
+	require.Eventually(t, func() bool { return idler.channel("ada") != nil }, time.Second, time.Millisecond)
+	assert.Equal(t, 2, idler.callCount())
+
+	// Going offline stops IDLE
+	now.Add(watchIdleTimeout + time.Second)
+	tickAndWait(t, w)
+	require.Eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.idlers == 0
+	}, time.Second, time.Millisecond)
+}
+
+func TestUnreadWatcherPollsServersWithoutIdle(t *testing.T) {
+	w, inboxes, now := newTestWatcher()
+	idler := &fakeIdler{running: map[string]chan int{}, err: errIdleUnsupported}
+	w.idle = idler.idle
+	inboxes.set("ada", 2, false)
+	w.Touch("ada")
+
+	tickAndWait(t, w)
+	require.Eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return w.inboxes["ada"].stopIdle == nil
+	}, time.Second, time.Millisecond)
+	for range 3 {
+		w.Touch("ada")
+		assert.Equal(t, []string{"ada"}, tickAndWait(t, w))
+		now.Add(2 * time.Minute)
+	}
+	assert.Equal(t, 1, idler.callCount(), "IDLE isn't tried again soon")
+	assert.Equal(t, []int{2}, inboxes.publishedTo("ada"))
+
+	idler.setErr(nil)
+	now.Add(noIdleRecheck)
+	w.Touch("ada")
+	tickAndWait(t, w)
+	require.Eventually(t, func() bool { return idler.channel("ada") != nil }, time.Second, time.Millisecond)
+
+	w.Forget("ada")
+	require.Eventually(t, func() bool { return idler.channel("ada") == nil }, time.Second, time.Millisecond)
+}

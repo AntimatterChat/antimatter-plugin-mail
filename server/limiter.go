@@ -113,3 +113,10 @@ func (l *connLimiter) takeSlot(wait bool) bool {
 		return false
 	}
 }
+
+// userConnections returns the number of connection slots a user holds.
+func (l *connLimiter) userConnections(userID string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.perUser[userID]
+}

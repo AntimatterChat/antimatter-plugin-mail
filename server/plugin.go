@@ -65,6 +65,7 @@ func (p *Plugin) OnActivate() error {
 	p.unread = newUnreadWatcher(p.checkUnread, p.publishUnread, func() time.Duration {
 		return p.getConfiguration().unreadCheckInterval()
 	})
+	p.unread.idle = p.idleInbox
 	p.stopWatching = make(chan struct{})
 	go p.unread.Run(p.stopWatching)
 	go p.pool.Run(p.stopWatching)
