@@ -68,6 +68,7 @@ export const messages = defineMessages({
     moveTo: {id: 'mail.move_to', defaultMessage: 'Move to…'},
     delete: {id: 'mail.delete', defaultMessage: 'Delete'},
     deleteForever: {id: 'mail.delete_forever', defaultMessage: 'Delete this message for good? It is in the trash.'},
+    share: {id: 'mail.share', defaultMessage: 'Share to a channel'},
     remoteImagesBlocked: {id: 'mail.remote_images.blocked', defaultMessage: '{count, plural, one {# remote image was} other {# remote images were}} hidden to protect your privacy.'},
     remoteImagesShow: {id: 'mail.remote_images.show', defaultMessage: 'Show images'},
     attachments: {id: 'mail.attachments', defaultMessage: 'Attachments'},
@@ -83,4 +84,12 @@ export const messages = defineMessages({
     discardConfirm: {id: 'mail.discard.confirm', defaultMessage: 'Discard this message?'},
     sent: {id: 'mail.sent', defaultMessage: 'Message sent.'},
     noRecipients: {id: 'mail.no_recipients', defaultMessage: 'Add at least one recipient.'},
+
+    // Share
+    shareTitle: {id: 'mail.share.title', defaultMessage: 'Share to a channel'},
+    shareChannel: {id: 'mail.share.channel', defaultMessage: 'Channel'},
+    shareComment: {id: 'mail.share.comment', defaultMessage: 'Comment (optional)'},
+    shareSubmit: {id: 'mail.share.submit', defaultMessage: 'Share'},
+    shared: {id: 'mail.share.done', defaultMessage: 'Shared to {channel}.'},
+    sharePrivacy: {id: 'mail.share.privacy', defaultMessage: 'The channel sees the sender, subject, date and the beginning of the message.'},
 });

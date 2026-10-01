@@ -11,6 +11,7 @@ import {displayName, formatAddresses, formatSize, fullDate, hue, initials} from 
 
 import Icon from './icon';
 import {messages} from './messages';
+import ShareForm from './share_form';
 
 type Props = {
     folder: string;
@@ -81,6 +82,8 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
     const [remoteImages, setRemoteImages] = useState(false);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [sharing, setSharing] = useState(false);
+    const [notice, setNotice] = useState('');
 
     const load = useCallback(async (withRemoteImages: boolean) => {
         setError('');
@@ -165,6 +168,15 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                             <Icon name='forward'/>
                         </button>
                         <button
+                            className={am('icon-btn', {on: sharing})}
+                            title={formatMessage(messages.share)}
+                            aria-label={formatMessage(messages.share)}
+                            aria-pressed={sharing}
+                            onClick={() => setSharing(!sharing)}
+                        >
+                            <Icon name='export'/>
+                        </button>
+                        <button
                             className={am('icon-btn')}
                             title={formatMessage(messages.markUnread)}
                             aria-label={formatMessage(messages.markUnread)}
@@ -232,6 +244,18 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                             ))}
                         </select>
                     </div>
+                    {sharing && (
+                        <ShareForm
+                            folder={folder}
+                            uid={uid}
+                            onDone={(channelName) => {
+                                setSharing(false);
+                                setNotice(formatMessage(messages.shared, {channel: channelName}));
+                            }}
+                            onCancel={() => setSharing(false)}
+                        />
+                    )}
+                    {notice && <div className={own('notice')}>{notice}</div>}
                     {msg.remote_images > 0 && !remoteImages && (
                         <div className={own('notice')}>
                             {formatMessage(messages.remoteImagesBlocked, {count: msg.remote_images})}
