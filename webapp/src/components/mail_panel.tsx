@@ -8,7 +8,7 @@ import {useStore} from 'react-redux';
 import {loadUnread, setUnread} from '../actions';
 import {am, own} from '../class_names';
 import * as client from '../client';
-import type {Account, Folder, FullMessage, MessageSummary} from '../client';
+import type {Account, Folder, FullMessage, MessageSummary, OAuthProvider} from '../client';
 import type {PluginStore} from '../types/host';
 import {displayName, draftFromMessage, emptyDraft, forwardDraft, formatAddresses, fullDate, replyDraft, type Draft} from '../utils';
 import {isFusionUI} from '../web_ui';
@@ -34,6 +34,7 @@ export default function MailPanel() {
     const [account, setAccount] = useState<Account | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [allowInsecure, setAllowInsecure] = useState(false);
+    const [providers, setProviders] = useState<OAuthProvider[]>([]);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [folder, setFolder] = useState(INBOX);
     const [view, setView] = useState<View>({kind: 'list'});
@@ -47,6 +48,7 @@ export default function MailPanel() {
             const [loadedAccount, config] = await Promise.all([client.getAccount(), client.getConfig()]);
             setAccount(loadedAccount);
             setAllowInsecure(config.allow_insecure_connections);
+            setProviders(config.oauth_providers || []);
             setLoaded(true);
         } catch (err) {
             setError((err as Error).message);
@@ -144,6 +146,7 @@ export default function MailPanel() {
             <AccountForm
                 account={account}
                 allowInsecure={allowInsecure}
+                providers={providers}
                 onSaved={(saved) => {
                     setAccount(saved);
                     setFolder(INBOX);

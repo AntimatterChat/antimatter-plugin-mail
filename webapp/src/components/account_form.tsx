@@ -1,12 +1,13 @@
 // Copyright (c) 2026-present Antimatter contributors.
 // See LICENSE.txt for license information.
 
-import React, {useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useIntl} from 'react-intl';
 
 import {am, own} from '../class_names';
 import * as client from '../client';
-import type {Account, AccountRequest, Security, ServerSettings} from '../client';
+import type {Account, AccountRequest, OAuthProvider, Security, ServerSettings} from '../client';
+import manifest from '../manifest';
 
 import {messages} from './messages';
 
@@ -18,6 +19,7 @@ const defaultPorts: Record<'imap' | 'smtp', Record<Security, number>> = {
 type Props = {
     account: Account | null;
     allowInsecure: boolean;
+    providers: OAuthProvider[];
     onSaved: (account: Account) => void;
     onCancel: (() => void) | null;
     onDisconnected: () => void;
@@ -42,8 +44,83 @@ function serverForm(settings: ServerSettings | undefined, kind: 'imap' | 'smtp')
     };
 }
 
+// oauthMessageType is the type of the message the sign-in window sends when it's done.
+const oauthMessageType = `${manifest.id}.oauth`;
+
+// useOAuthSignIn signs in with a provider in a separate window, which the provider sends back to
+// the plugin when done. It calls onSignedIn with the connected account.
+function useOAuthSignIn(onSignedIn: (account: Account) => void, setError: (error: string) => void) {
+    const [waiting, setWaiting] = useState(false);
+    const [blockedURL, setBlockedURL] = useState('');
+    const popup = useRef<Window | null>(null);
+
+    const finish = useCallback(async () => {
+        popup.current = null;
+        setWaiting(false);
+        try {
+            const account = await client.getAccount();
+            if (account?.oauth_provider) {
+                onSignedIn(account);
+            }
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    }, [onSignedIn, setError]);
+
+    useEffect(() => {
+        const onMessage = (e: MessageEvent) => {
+            if (e.origin !== window.location.origin || e.source !== popup.current || e.data?.type !== oauthMessageType) {
+                return;
+            }
+            if (e.data.ok) {
+                finish();
+            } else {
+                setError(String(e.data.error || ''));
+            }
+        };
+
+        // The window may be closed before it tells how it went
+        let timer = 0;
+        if (waiting) {
+            timer = window.setInterval(() => {
+                if (popup.current?.closed) {
+                    finish();
+                }
+            }, 1000);
+            window.addEventListener('message', onMessage);
+        }
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener('message', onMessage);
+        };
+    }, [waiting, finish, setError]);
+
+    const signIn = async (provider: string) => {
+        setError('');
+        setBlockedURL('');
+
+        // Browsers only let a click open a window, before the sign-in URL is known
+        const opened = window.open('', 'amm-oauth', 'popup,width=520,height=680');
+        try {
+            const url = await client.startOAuth(provider);
+            if (opened) {
+                opened.location.href = url;
+                popup.current = opened;
+                setWaiting(true);
+            } else {
+                setBlockedURL(url);
+            }
+        } catch (err) {
+            opened?.close();
+            setError((err as Error).message);
+        }
+    };
+
+    return {signIn, waiting, blockedURL};
+}
+
 // AccountForm connects a mailbox, or changes its settings.
-export default function AccountForm({account, allowInsecure, onSaved, onCancel, onDisconnected}: Props) {
+export default function AccountForm({account, allowInsecure, providers, onSaved, onCancel, onDisconnected}: Props) {
     const {formatMessage} = useIntl();
     const [email, setEmail] = useState(account?.email || '');
     const [name, setName] = useState(account?.name || '');
@@ -59,6 +136,8 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
     });
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const oauth = useOAuthSignIn(onSaved, setError);
+    const accountProvider = providers.find((p) => p.id === account?.oauth_provider)?.name || account?.oauth_provider || '';
 
     let submitLabel = account ? messages.save : messages.connect;
     if (saving) {
@@ -71,7 +150,7 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
         e.preventDefault();
         setSaving(true);
         setError('');
-        const request: AccountRequest = {
+        let request: AccountRequest = {
             email: email.trim(),
             name: name.trim(),
             imap: {host: imap.host.trim(), port: Number(imap.port), security: imap.security, username: imap.username.trim() || email.trim()},
@@ -79,6 +158,10 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
             imap_password: imap.password,
             smtp_password: smtp.password,
         };
+        if (account?.oauth_provider) {
+            // Only the name of an account signed in with a provider changes
+            request = {...account, name: name.trim(), imap_password: '', smtp_password: ''};
+        }
         try {
             onSaved(await client.saveAccount(request));
         } catch (err) {
@@ -194,6 +277,105 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
         );
     };
 
+    const providerButtons = providers.map((p) => (
+        <button
+            key={p.id}
+            type='button'
+            className={am('btn', {primary: !account})}
+            disabled={oauth.waiting}
+            onClick={() => oauth.signIn(p.id)}
+        >
+            {formatMessage(account?.oauth_provider === p.id ? messages.signInAgain : messages.signInWith, {provider: p.name})}
+        </button>
+    ));
+    const signInStatus = (
+        <>
+            {oauth.waiting && <div className={own('notice')}>{formatMessage(messages.signingIn)}</div>}
+            {oauth.blockedURL && (
+                <div className={own('notice')}>
+                    <a
+                        className={own('link')}
+                        href={oauth.blockedURL}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                    >
+                        {formatMessage(messages.signInLink)}
+                    </a>
+                </div>
+            )}
+        </>
+    );
+
+    const actions = (
+        <div className={own('actions')}>
+            <button
+                type='submit'
+                className={am('btn', 'primary')}
+                disabled={saving}
+            >
+                {formatMessage(submitLabel)}
+            </button>
+            {onCancel && (
+                <button
+                    type='button'
+                    className={am('btn')}
+                    onClick={onCancel}
+                >
+                    {formatMessage(messages.cancel)}
+                </button>
+            )}
+            <span className={am('grow')}/>
+            {account && (
+                <button
+                    type='button'
+                    className={am('btn', 'danger')}
+                    onClick={disconnect}
+                >
+                    {formatMessage(messages.disconnect)}
+                </button>
+            )}
+        </div>
+    );
+
+    const nameField = (
+        <label
+            className={am('field')}
+            htmlFor='amm-name'
+        >
+            <span>{formatMessage(messages.name)}</span>
+            <input
+                id='amm-name'
+                type='text'
+                value={name}
+                autoComplete='name'
+                onChange={(e) => setName(e.target.value)}
+            />
+        </label>
+    );
+
+    // An account signed in with a provider has no servers to set
+    if (account?.oauth_provider) {
+        return (
+            <form
+                className={am('app-panel')}
+                onSubmit={save}
+            >
+                <div className={own('form-head')}>
+                    <h3>{formatMessage(messages.settingsTitle)}</h3>
+                    <p>{formatMessage(messages.signedInAs, {provider: accountProvider, email: account.email})}</p>
+                </div>
+                {nameField}
+                <div className={own('actions')}>
+                    {providerButtons.filter((b) => b.key === account.oauth_provider)}
+                </div>
+                {signInStatus}
+                {error && <div className={own('error')}>{error}</div>}
+                <small className={own('note')}>{formatMessage(messages.oauthStored, {provider: accountProvider})}</small>
+                {actions}
+            </form>
+        );
+    }
+
     return (
         <form
             className={am('app-panel')}
@@ -203,6 +385,13 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
                 <h3>{formatMessage(account ? messages.settingsTitle : messages.setupTitle)}</h3>
                 {!account && <p>{formatMessage(messages.setupIntro)}</p>}
             </div>
+            {providers.length > 0 && (
+                <>
+                    <div className={own('actions')}>{providerButtons}</div>
+                    {signInStatus}
+                    <p className={own('note')}>{formatMessage(messages.signInManual)}</p>
+                </>
+            )}
             <label
                 className={am('field')}
                 htmlFor='amm-email'
@@ -219,51 +408,12 @@ export default function AccountForm({account, allowInsecure, onSaved, onCancel, 
                     onChange={(e) => setEmail(e.target.value)}
                 />
             </label>
-            <label
-                className={am('field')}
-                htmlFor='amm-name'
-            >
-                <span>{formatMessage(messages.name)}</span>
-                <input
-                    id='amm-name'
-                    type='text'
-                    value={name}
-                    autoComplete='name'
-                    onChange={(e) => setName(e.target.value)}
-                />
-            </label>
+            {nameField}
             {serverFields('imap', imap, setIMAP)}
             {serverFields('smtp', smtp, setSMTP)}
             {error && <div className={own('error')}>{error}</div>}
             <small className={own('note')}>{formatMessage(messages.passwordsStored)}</small>
-            <div className={own('actions')}>
-                <button
-                    type='submit'
-                    className={am('btn', 'primary')}
-                    disabled={saving}
-                >
-                    {formatMessage(submitLabel)}
-                </button>
-                {onCancel && (
-                    <button
-                        type='button'
-                        className={am('btn')}
-                        onClick={onCancel}
-                    >
-                        {formatMessage(messages.cancel)}
-                    </button>
-                )}
-                <span className={am('grow')}/>
-                {account && (
-                    <button
-                        type='button'
-                        className={am('btn', 'danger')}
-                        onClick={disconnect}
-                    >
-                        {formatMessage(messages.disconnect)}
-                    </button>
-                )}
-            </div>
+            {actions}
         </form>
     );
 }

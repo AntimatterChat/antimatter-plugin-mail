@@ -33,6 +33,13 @@ export const messages = defineMessages({
     disconnect: {id: 'mail.settings.disconnect', defaultMessage: 'Disconnect'},
     disconnectConfirm: {id: 'mail.settings.disconnect.confirm', defaultMessage: 'Disconnect your mailbox from Antimatter? Your mail stays on your mail server.'},
     passwordsStored: {id: 'mail.settings.passwords_stored', defaultMessage: 'Your passwords are stored encrypted on the Antimatter server.'},
+    signInWith: {id: 'mail.settings.oauth.sign_in', defaultMessage: 'Sign in with {provider}'},
+    signInManual: {id: 'mail.settings.oauth.manual', defaultMessage: 'Or connect any mailbox with its IMAP and SMTP servers:'},
+    signingIn: {id: 'mail.settings.oauth.signing_in', defaultMessage: 'Finish signing in in the window that opened.'},
+    signInLink: {id: 'mail.settings.oauth.link', defaultMessage: 'Your browser blocked the sign-in window: open the sign-in page.'},
+    signedInAs: {id: 'mail.settings.oauth.signed_in', defaultMessage: 'Signed in with {provider} as {email}.'},
+    signInAgain: {id: 'mail.settings.oauth.again', defaultMessage: 'Sign in again'},
+    oauthStored: {id: 'mail.settings.oauth.stored', defaultMessage: 'Antimatter keeps an encrypted access to your mailbox, which you can also revoke from your {provider} account.'},
 
     // List
     folder: {id: 'mail.folder', defaultMessage: 'Folder'},

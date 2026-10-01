@@ -19,6 +19,9 @@ export type Account = {
     name: string;
     imap: ServerSettings;
     smtp: ServerSettings;
+
+    // The provider the user signed in with, for accounts without passwords
+    oauth_provider?: string;
 };
 
 export type AccountRequest = Account & {
@@ -26,8 +29,14 @@ export type AccountRequest = Account & {
     smtp_password: string;
 };
 
+export type OAuthProvider = {
+    id: string;
+    name: string;
+};
+
 export type ClientConfig = {
     allow_insecure_connections: boolean;
+    oauth_providers: OAuthProvider[];
 };
 
 export type FolderRole = 'inbox' | 'drafts' | 'sent' | 'archive' | 'junk' | 'trash' | '';
@@ -171,6 +180,11 @@ export async function getAccount() {
 
 export async function saveAccount(account: AccountRequest) {
     return (await request<{account: Account}>('PUT', '/account', account)).account;
+}
+
+// startOAuth starts signing in with a provider, returning the provider's page to open.
+export async function startOAuth(provider: string) {
+    return (await request<{url: string}>('POST', `/oauth/${encodeURIComponent(provider)}/start`)).url;
 }
 
 export function deleteAccount() {
