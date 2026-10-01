@@ -31,6 +31,10 @@ func (p *Plugin) idleInbox(userID string, stop <-chan struct{}, report func(unre
 	if account == nil {
 		return errNoAccount
 	}
+	creds, err := p.credentials(userID, account, kindIMAP)
+	if err != nil {
+		return err
+	}
 	release, err := p.limiter.tryAcquire(userID)
 	if err != nil {
 		return errIdleNoSlot
@@ -50,7 +54,7 @@ func (p *Plugin) idleInbox(userID string, stop <-chan struct{}, report func(unre
 		Mailbox: func(*imapclient.UnilateralDataMailbox) { notify() },
 		Fetch:   func(*imapclient.FetchMessageData) { notify() },
 	}
-	session, err := dialIMAP(account.IMAP, account.IMAPPassword, opts)
+	session, err := dialIMAP(account.IMAP, creds, opts)
 	if err != nil {
 		return err
 	}

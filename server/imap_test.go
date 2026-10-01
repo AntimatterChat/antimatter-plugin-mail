@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
+	"github.com/emersion/go-sasl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +51,7 @@ func startIMAPServer(t *testing.T, caps imap.CapSet, folders ...string) *testIMA
 	server := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
 			testServer.connections.Add(1)
-			return memServer.NewSession(), nil, nil
+			return saslSession{memServer.NewSession().(imapserver.SessionIMAP4rev2)}, nil, nil
 		},
 		Caps:         caps,
 		InsecureAuth: true,
@@ -66,6 +68,29 @@ func startIMAPServer(t *testing.T, caps imap.CapSet, folders ...string) *testIMA
 	return testServer
 }
 
+// saslSession adds XOAUTH2 to the sessions of the in-memory IMAP server: any user name with a
+// valid token logs in as ada.
+type saslSession struct {
+	imapserver.SessionIMAP4rev2
+}
+
+func (s saslSession) AuthenticateMechanisms() []string {
+	return []string{sasl.Plain, mechXOAuth2}
+}
+
+func (s saslSession) Authenticate(mech string) (sasl.Server, error) {
+	switch mech {
+	case sasl.Plain:
+		return sasl.NewPlainServer(func(_, username, password string) error {
+			return s.Login(username, password)
+		}), nil
+	case mechXOAuth2:
+		return &testXOAuth2Server{login: func(string) error { return s.Login("ada", "secret") }}, nil
+	default:
+		return nil, errors.New("unsupported mechanism")
+	}
+}
+
 type discardLogger struct{}
 
 func (discardLogger) Printf(string, ...any) {}
@@ -80,7 +105,7 @@ var testIMAPOptions = imapOptions{dialer: newDialer(true), allowInsecure: true}
 
 func (s *testIMAPServer) dial(t *testing.T) *imapSession {
 	t.Helper()
-	session, err := dialIMAP(s.settings, "secret", testIMAPOptions)
+	session, err := dialIMAP(s.settings, passwordCredentials("secret"), testIMAPOptions)
 	require.NoError(t, err)
 	t.Cleanup(session.Close)
 	return session
@@ -94,17 +119,25 @@ func simpleMessage(subject, body string) []byte {
 func TestDialIMAP(t *testing.T) {
 	server := startIMAPServer(t, imap.CapSet{imap.CapIMAP4rev1: {}})
 
-	_, err := dialIMAP(server.settings, "wrong", testIMAPOptions)
+	_, err := dialIMAP(server.settings, passwordCredentials("wrong"), testIMAPOptions)
 	require.Error(t, err)
 	assert.Equal(t, 400, statusFor(err))
 
-	_, err = dialIMAP(server.settings, "secret", imapOptions{dialer: newDialer(true)})
+	_, err = dialIMAP(server.settings, passwordCredentials("secret"), imapOptions{dialer: newDialer(true)})
 	assert.Equal(t, 403, statusFor(err), "insecure connections need to be allowed")
 
-	_, err = dialIMAP(server.settings, "secret", imapOptions{dialer: newDialer(false), allowInsecure: true})
+	_, err = dialIMAP(server.settings, passwordCredentials("secret"), imapOptions{dialer: newDialer(false), allowInsecure: true})
 	assert.Equal(t, 403, statusFor(err), "private networks need to be allowed")
 
 	server.dial(t)
+
+	// With an OAuth access token
+	session, err := dialIMAP(server.settings, credentials{token: "valid-1"}, testIMAPOptions)
+	require.NoError(t, err)
+	session.Close()
+	_, err = dialIMAP(server.settings, credentials{token: "expired"}, testIMAPOptions)
+	require.Error(t, err)
+	assert.Equal(t, 400, statusFor(err))
 }
 
 func TestListFolders(t *testing.T) {

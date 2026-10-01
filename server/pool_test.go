@@ -27,7 +27,7 @@ func TestIMAPPool(t *testing.T) {
 	conn := func(userID, key string) *pooledConn {
 		release, err := limiter.acquire(userID)
 		require.NoError(t, err)
-		session, err := dialIMAP(server.settings, "secret", testIMAPOptions)
+		session, err := dialIMAP(server.settings, passwordCredentials("secret"), testIMAPOptions)
 		require.NoError(t, err)
 		return &pooledConn{session: session, release: release, key: key}
 	}

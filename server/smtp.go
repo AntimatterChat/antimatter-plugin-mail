@@ -177,7 +177,7 @@ type smtpOptions struct {
 	tlsConfig *tls.Config
 }
 
-func dialSMTP(settings ServerSettings, password string, opts smtpOptions) (*smtp.Client, error) {
+func dialSMTP(settings ServerSettings, creds credentials, opts smtpOptions) (*smtp.Client, error) {
 	address := net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port))
 	tlsConfig := opts.tlsConfig
 	if tlsConfig == nil {
@@ -217,10 +217,15 @@ func dialSMTP(settings ServerSettings, password string, opts smtpOptions) (*smtp
 
 	var auth sasl.Client
 	switch {
+	case creds.token != "":
+		if auth = oauthClient(settings.Username, creds.token, client.SupportsAuth); auth == nil {
+			_ = client.Close()
+			return nil, newAPIError(http.StatusBadGateway, "the SMTP server doesn't offer OAuth sign in")
+		}
 	case client.SupportsAuth(sasl.Plain):
-		auth = sasl.NewPlainClient("", settings.Username, password)
+		auth = sasl.NewPlainClient("", settings.Username, creds.password)
 	case client.SupportsAuth(sasl.Login):
-		auth = sasl.NewLoginClient(settings.Username, password)
+		auth = sasl.NewLoginClient(settings.Username, creds.password)
 	default:
 		_ = client.Close()
 		return nil, newAPIError(http.StatusBadRequest, "the SMTP server doesn't offer password authentication")
@@ -237,8 +242,8 @@ func dialSMTP(settings ServerSettings, password string, opts smtpOptions) (*smtp
 }
 
 // checkSMTP checks that the SMTP server accepts the account's credentials.
-func checkSMTP(account *Account, opts smtpOptions) error {
-	client, err := dialSMTP(account.SMTP, account.SMTPPassword, opts)
+func checkSMTP(account *Account, creds credentials, opts smtpOptions) error {
+	client, err := dialSMTP(account.SMTP, creds, opts)
 	if err != nil {
 		return err
 	}
@@ -247,8 +252,8 @@ func checkSMTP(account *Account, opts smtpOptions) error {
 }
 
 // sendSMTP sends a message.
-func sendSMTP(account *Account, recipients []string, raw []byte, opts smtpOptions) error {
-	client, err := dialSMTP(account.SMTP, account.SMTPPassword, opts)
+func sendSMTP(account *Account, creds credentials, recipients []string, raw []byte, opts smtpOptions) error {
+	client, err := dialSMTP(account.SMTP, creds, opts)
 	if err != nil {
 		return err
 	}

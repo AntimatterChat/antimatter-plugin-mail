@@ -194,16 +194,36 @@ func (p *Plugin) imapConn(userID string, account *Account) (*pooledConn, error) 
 		conn.close()
 	}
 
+	creds, err := p.credentials(userID, account, kindIMAP)
+	if err != nil {
+		return nil, err
+	}
 	release, err := p.limiter.acquire(userID)
 	if err != nil {
 		return nil, err
 	}
-	session, err := dialIMAP(account.IMAP, account.IMAPPassword, p.imapOptions())
+	session, err := dialIMAP(account.IMAP, creds, p.imapOptions())
 	if err != nil {
 		release()
 		return nil, err
 	}
 	return &pooledConn{session: session, release: release, key: key}, nil
+}
+
+// serverKind tells IMAP and SMTP servers apart.
+type serverKind int
+
+const (
+	kindIMAP serverKind = iota
+	kindSMTP
+)
+
+// credentials returns the credentials to sign in to the user's IMAP or SMTP server with.
+func (p *Plugin) credentials(_ string, account *Account, kind serverKind) (credentials, error) {
+	if kind == kindSMTP {
+		return passwordCredentials(account.SMTPPassword), nil
+	}
+	return passwordCredentials(account.IMAPPassword), nil
 }
 
 func (p *Plugin) imapOptions() imapOptions {
@@ -275,13 +295,13 @@ func (p *Plugin) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	session, err := dialIMAP(account.IMAP, account.IMAPPassword, p.imapOptions())
+	session, err := dialIMAP(account.IMAP, passwordCredentials(account.IMAPPassword), p.imapOptions())
 	if err != nil {
 		p.writeError(w, err)
 		return
 	}
 	session.Close()
-	if err := checkSMTP(account, p.smtpOptions()); err != nil {
+	if err := checkSMTP(account, passwordCredentials(account.SMTPPassword), p.smtpOptions()); err != nil {
 		p.writeError(w, err)
 		return
 	}
@@ -555,12 +575,17 @@ func (p *Plugin) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	creds, err := p.credentials(userID(r), account, kindSMTP)
+	if err != nil {
+		p.writeError(w, err)
+		return
+	}
 	release, err := p.limiter.acquire(userID(r))
 	if err != nil {
 		p.writeError(w, err)
 		return
 	}
-	err = sendSMTP(account, recipients, raw, p.smtpOptions())
+	err = sendSMTP(account, creds, recipients, raw, p.smtpOptions())
 	release()
 	if err != nil {
 		p.writeError(w, err)

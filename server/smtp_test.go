@@ -76,10 +76,16 @@ func (b *testSMTPBackend) NewSession(*smtp.Conn) (smtp.Session, error) {
 }
 
 func (s *testSMTPSession) AuthMechanisms() []string {
-	return []string{sasl.Plain}
+	return []string{sasl.Plain, mechXOAuth2}
 }
 
-func (s *testSMTPSession) Auth(string) (sasl.Server, error) {
+func (s *testSMTPSession) Auth(mech string) (sasl.Server, error) {
+	if mech == mechXOAuth2 {
+		return &testXOAuth2Server{login: func(string) error {
+			s.authed = true
+			return nil
+		}}, nil
+	}
 	return sasl.NewPlainServer(func(_, username, password string) error {
 		if username != "ada" || password != "secret" {
 			return errors.New("invalid credentials")
@@ -139,22 +145,26 @@ func TestSendSMTP(t *testing.T) {
 	backend, settings := startSMTPServer(t)
 	account := testAccount()
 	account.SMTP = settings
-	account.SMTPPassword = "secret"
+	secret := passwordCredentials("secret")
 
-	require.NoError(t, checkSMTP(account, testSMTPOptions))
-	require.NoError(t, sendSMTP(account, []string{"marie@example.com", "secret@example.com"}, crlf("Subject: hi\n\nhello\n"), testSMTPOptions))
+	require.NoError(t, checkSMTP(account, secret, testSMTPOptions))
+	require.NoError(t, sendSMTP(account, secret, []string{"marie@example.com", "secret@example.com"}, crlf("Subject: hi\n\nhello\n"), testSMTPOptions))
 
 	require.Len(t, backend.received, 1)
 	assert.Equal(t, "ada@example.com", backend.received[0].from)
 	assert.Equal(t, []string{"marie@example.com", "secret@example.com"}, backend.received[0].to)
 	assert.Contains(t, backend.received[0].data, "hello")
 
-	account.SMTPPassword = "wrong"
-	err := checkSMTP(account, testSMTPOptions)
+	err := checkSMTP(account, passwordCredentials("wrong"), testSMTPOptions)
 	require.Error(t, err)
 	assert.Equal(t, 400, statusFor(err))
 
-	account.SMTPPassword = "secret"
-	err = checkSMTP(account, smtpOptions{dialer: newDialer(true)})
+	err = checkSMTP(account, secret, smtpOptions{dialer: newDialer(true)})
 	assert.Equal(t, 403, statusFor(err), "insecure connections need to be allowed")
+
+	// With an OAuth access token
+	require.NoError(t, sendSMTP(account, credentials{token: "valid-1"}, []string{"marie@example.com"}, crlf("Subject: hi\n\nhello again\n"), testSMTPOptions))
+	require.Len(t, backend.received, 2)
+	err = checkSMTP(account, credentials{token: "expired"}, testSMTPOptions)
+	assert.Equal(t, 400, statusFor(err))
 }

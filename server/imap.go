@@ -105,7 +105,7 @@ func connectionError(what string, err error) error {
 }
 
 // dialIMAP connects and logs in to an IMAP server.
-func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imapSession, error) {
+func dialIMAP(settings ServerSettings, creds credentials, opts imapOptions) (*imapSession, error) {
 	address := net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port))
 	clientOptions := &imapclient.Options{Dialer: opts.dialer, TLSConfig: opts.tlsConfig, UnilateralDataHandler: opts.unilateral}
 
@@ -138,7 +138,7 @@ func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imap
 		session.close()
 		return nil, connectionError("IMAP", err)
 	}
-	if err := client.Login(settings.Username, password).Wait(); err != nil {
+	if err := login(client, settings.Username, creds); err != nil {
 		session.close()
 		var imapErr *imap.Error
 		if errors.As(err, &imapErr) {
@@ -147,6 +147,18 @@ func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imap
 		return nil, connectionError("IMAP", err)
 	}
 	return session, nil
+}
+
+// login signs in with a password or an access token.
+func login(client *imapclient.Client, username string, creds credentials) error {
+	if creds.token == "" {
+		return client.Login(username, creds.password).Wait()
+	}
+	auth := oauthClient(username, creds.token, func(mech string) bool { return client.Caps().Has(imap.AuthCap(mech)) })
+	if auth == nil {
+		return newAPIError(http.StatusBadGateway, "the IMAP server doesn't offer OAuth sign in")
+	}
+	return client.Authenticate(auth)
 }
 
 func (s *imapSession) close() {
