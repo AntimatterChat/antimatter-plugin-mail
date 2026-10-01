@@ -254,8 +254,26 @@ func sortFolders(folders []Folder) {
 
 // ListFolders returns the selectable folders, with their message counts.
 func (s *imapSession) ListFolders() ([]Folder, error) {
+	return s.listFolders(true)
+}
+
+// roleFolder returns the name of the folder with the given role, or "" if there's none.
+func (s *imapSession) roleFolder(role string) (string, error) {
+	folders, err := s.listFolders(false)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range folders {
+		if f.Role == role {
+			return f.Name, nil
+		}
+	}
+	return "", nil
+}
+
+func (s *imapSession) listFolders(withCounts bool) ([]Folder, error) {
 	options := &imap.ListOptions{}
-	withStatus := s.client.Caps().Has(imap.CapListStatus)
+	withStatus := withCounts && s.client.Caps().Has(imap.CapListStatus)
 	if withStatus {
 		options.ReturnStatus = &imap.StatusOptions{NumMessages: true, NumUnseen: true}
 	}
@@ -281,7 +299,7 @@ func (s *imapSession) ListFolders() ([]Folder, error) {
 	guessRoles(folders)
 	sortFolders(folders)
 
-	if !withStatus {
+	if withCounts && !withStatus {
 		// Pipeline the STATUS commands
 		count := min(len(folders), maxStatusFolders)
 		commands := make([]*imapclient.StatusCommand, count)
@@ -575,15 +593,9 @@ func (s *imapSession) Move(folder string, uids []uint32, dest string) error {
 // Delete moves messages to the trash, or deletes them for good when they are in the trash or
 // there's no trash folder.
 func (s *imapSession) Delete(folder string, uids []uint32) error {
-	folders, err := s.ListFolders()
+	trash, err := s.roleFolder(RoleTrash)
 	if err != nil {
 		return err
-	}
-	trash := ""
-	for _, f := range folders {
-		if f.Role == RoleTrash {
-			trash = f.Name
-		}
 	}
 	if trash != "" && trash != folder {
 		return s.Move(folder, uids, trash)
@@ -592,7 +604,11 @@ func (s *imapSession) Delete(folder string, uids []uint32) error {
 	if _, err := s.selectFolder(folder, false); err != nil {
 		return err
 	}
-	set := uidSet(uids)
+	return s.expunge(uidSet(uids))
+}
+
+// expunge deletes messages of the selected folder for good.
+func (s *imapSession) expunge(set imap.UIDSet) error {
 	if err := s.client.Store(set, &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagDeleted}}, nil).Close(); err != nil {
 		return errors.Wrap(err, "failed to delete the messages")
 	}
@@ -611,26 +627,29 @@ func (s *imapSession) Delete(folder string, uids []uint32) error {
 // AppendToRole stores a message in the folder with the given role (such as the sent folder), if
 // there's one. It returns whether the message was stored.
 func (s *imapSession) AppendToRole(role string, raw []byte, flags []imap.Flag) (bool, error) {
-	folders, err := s.ListFolders()
-	if err != nil {
+	folder, err := s.roleFolder(role)
+	if err != nil || folder == "" {
 		return false, err
 	}
-	for _, f := range folders {
-		if f.Role != role {
-			continue
-		}
-		cmd := s.client.Append(f.Name, int64(len(raw)), &imap.AppendOptions{Flags: flags, Time: time.Now()})
-		if _, err := cmd.Write(raw); err != nil {
-			_ = cmd.Close()
-			return false, errors.Wrap(err, "failed to store the message")
-		}
-		if err := cmd.Close(); err != nil {
-			return false, errors.Wrap(err, "failed to store the message")
-		}
-		if _, err := cmd.Wait(); err != nil {
-			return false, errors.Wrap(err, "failed to store the message")
-		}
-		return true, nil
+	if _, err := s.appendMessage(folder, raw, flags); err != nil {
+		return false, err
 	}
-	return false, nil
+	return true, nil
+}
+
+// appendMessage stores a message in a folder. It returns its UID if the server tells it.
+func (s *imapSession) appendMessage(folder string, raw []byte, flags []imap.Flag) (imap.UID, error) {
+	cmd := s.client.Append(folder, int64(len(raw)), &imap.AppendOptions{Flags: flags, Time: time.Now()})
+	if _, err := cmd.Write(raw); err != nil {
+		_ = cmd.Close()
+		return 0, errors.Wrap(err, "failed to store the message")
+	}
+	if err := cmd.Close(); err != nil {
+		return 0, errors.Wrap(err, "failed to store the message")
+	}
+	data, err := cmd.Wait()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to store the message")
+	}
+	return data.UID, nil
 }
