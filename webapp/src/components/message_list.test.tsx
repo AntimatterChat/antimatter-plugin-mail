@@ -90,3 +90,22 @@ describe('MessageList selection', () => {
         expect(mocked.deleteMessages).toHaveBeenCalledWith('INBOX', [3, 2, 1]);
     });
 });
+
+describe('MessageList search', () => {
+    test('searches the folder', async () => {
+        mocked.getMessages.mockResolvedValue({folder: 'INBOX', total: 0, page: 0, per_page: 50, messages: []});
+        renderList();
+        await screen.findByText('No messages here.');
+
+        fireEvent.click(screen.getByLabelText('Search'));
+        fireEvent.change(screen.getByLabelText('Search this folder'), {target: {value: ' pizza '}});
+        mocked.getMessages.mockResolvedValue({folder: 'INBOX', query: 'pizza', total: 1, page: 0, per_page: 50, messages: [summary(2, 'Lunch', false)]});
+        fireEvent.submit(screen.getByRole('search'));
+
+        expect(await screen.findByText('1 message contains “pizza”')).toBeInTheDocument();
+        expect(mocked.getMessages).toHaveBeenLastCalledWith('INBOX', 0, 50, 'pizza');
+
+        fireEvent.click(screen.getByLabelText('Clear the search'));
+        await waitFor(() => expect(mocked.getMessages).toHaveBeenLastCalledWith('INBOX', 0, 50, ''));
+    });
+});

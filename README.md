@@ -20,7 +20,8 @@ own mailbox over IMAP (reading) and SMTP (sending).
   HTML mail is sanitised on the server and shown in a sandboxed frame that runs no script; remote
   images are hidden until you ask for them. Attachments are downloaded, never opened in the app.
 - **Organise.** Mark as unread, move to another folder, delete (to the trash, then for good).
-  Select messages in the list to mark them as read or unread, or delete them, at once.
+  Select messages in the list to mark them as read or unread, or delete them, at once. Search a
+  folder for the messages that contain a text (IMAP SEARCH, done by the mail server).
 - **Write.** New messages, replies (to the sender or everyone, threaded with In-Reply-To and
   References) and forwards with their attachments (which can be removed), in plain text. Sent
   mail is kept in the sent folder.

@@ -71,6 +71,7 @@ export type MessageSummary = {
 
 export type MessagePage = {
     folder: string;
+    query?: string;
     total: number;
     page: number;
     per_page: number;
@@ -207,8 +208,9 @@ export function getFolders() {
     return request<Folder[]>('GET', '/folders');
 }
 
-export function getMessages(folder: string, page: number, perPage: number) {
-    return request<MessagePage>('GET', `/messages?${query({folder, page, per_page: perPage})}`);
+// getMessages returns a page of the messages of a folder, or of those that contain a text.
+export function getMessages(folder: string, page: number, perPage: number, search?: string) {
+    return request<MessagePage>('GET', `/messages?${query({folder, page, per_page: perPage, ...(search ? {q: search} : {})})}`);
 }
 
 export function getMessage(folder: string, uid: number, options: {remoteImages?: boolean; markRead?: boolean} = {}) {

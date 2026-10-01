@@ -522,3 +522,27 @@
 .amm-selection {
     gap: 4px;
 }
+
+.amm-search {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.amm-root input.amm-search-input {
+    flex: 1;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--amm-line);
+    border-radius: 8px;
+    background: var(--amm-side);
+    color: var(--amm-text);
+    outline: none;
+}
+
+.amm-root input.amm-search-input:focus {
+    border-color: var(--amm-accent);
+}

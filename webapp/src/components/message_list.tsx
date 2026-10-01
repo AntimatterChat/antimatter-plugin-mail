@@ -138,12 +138,15 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
     const [error, setError] = useState('');
     const [selected, setSelected] = useState<Set<number>>(new Set());
     const [busy, setBusy] = useState(false);
+    const [searching, setSearching] = useState(false);
+    const [searchText, setSearchText] = useState('');
+    const [search, setSearch] = useState('');
 
     const load = useCallback(async (pageToLoad: number) => {
         setLoading(true);
         setError('');
         try {
-            const result = await client.getMessages(folder, pageToLoad, PER_PAGE);
+            const result = await client.getMessages(folder, pageToLoad, PER_PAGE, search);
             setList((current) => (pageToLoad === 0 || !current ? result.messages : appendPage(current, result.messages)));
             setTotal(result.total);
             setPage(pageToLoad);
@@ -152,6 +155,13 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
         } finally {
             setLoading(false);
         }
+    }, [folder, search]);
+
+    // A search is in the folder it was made in
+    useEffect(() => {
+        setSearch('');
+        setSearchText('');
+        setSearching(false);
     }, [folder]);
 
     useEffect(() => {
@@ -238,6 +248,21 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                 </select>
                 <span className={am('grow')}/>
                 <button
+                    className={am('icon-btn', {on: searching})}
+                    title={formatMessage(messages.search)}
+                    aria-label={formatMessage(messages.search)}
+                    aria-pressed={searching}
+                    onClick={() => {
+                        if (searching) {
+                            setSearch('');
+                            setSearchText('');
+                        }
+                        setSearching(!searching);
+                    }}
+                >
+                    <Icon name='search'/>
+                </button>
+                <button
                     className={am('icon-btn')}
                     title={formatMessage(messages.compose)}
                     aria-label={formatMessage(messages.compose)}
@@ -262,6 +287,44 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     <Icon name='cog'/>
                 </button>
             </div>
+            {searching && (
+                <form
+                    className={own('search')}
+                    role='search'
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        setSearch(searchText.trim());
+                    }}
+                >
+                    <input
+                        type='search'
+                        className={own('search-input')}
+                        value={searchText}
+                        placeholder={formatMessage(messages.searchPlaceholder)}
+                        aria-label={formatMessage(messages.searchPlaceholder)}
+                        maxLength={200}
+                        autoFocus={true}
+                        onChange={(e) => setSearchText(e.target.value)}
+                    />
+                    {search && (
+                        <button
+                            type='button'
+                            className={am('icon-btn')}
+                            title={formatMessage(messages.clearSearch)}
+                            aria-label={formatMessage(messages.clearSearch)}
+                            onClick={() => {
+                                setSearch('');
+                                setSearchText('');
+                            }}
+                        >
+                            <Icon name='x'/>
+                        </button>
+                    )}
+                </form>
+            )}
+            {search && list && (
+                <div className={am('sub')}>{formatMessage(messages.searchResults, {count: total, query: search})}</div>
+            )}
             <div className={am('app-h')}>
                 {Boolean(list?.length) && (
                     <input
@@ -326,7 +389,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                 </div>
             )}
             {list === null && !error && <div className={am('empty')}>{formatMessage(messages.loading)}</div>}
-            {list && list.length === 0 && <div className={am('empty')}>{formatMessage(messages.emptyFolder)}</div>}
+            {list && list.length === 0 && !search && <div className={am('empty')}>{formatMessage(messages.emptyFolder)}</div>}
             {list?.map((message) => (
                 <MessageRow
                     key={message.uid}
