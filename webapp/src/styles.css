@@ -1,0 +1,430 @@
+/*
+ * The mail panel. Under the Fusion web UI, its building blocks carry the Fusion mockup's am- classes,
+ * which Fusion styles; in the classic web app they carry amm- classes styled here after the mockup,
+ * with the classic theme's colours. The parts the mockup doesn't have are styled here for both.
+ */
+
+.amm-root {
+    --amm-text: var(--am-text, var(--center-channel-color));
+    --amm-text-2: var(--am-text-2, rgba(var(--center-channel-color-rgb), 0.88));
+    --amm-muted: var(--am-muted, rgba(var(--center-channel-color-rgb), 0.64));
+    --amm-line: var(--am-line, rgba(var(--center-channel-color-rgb), 0.16));
+    --amm-side: var(--am-side, rgba(var(--center-channel-color-rgb), 0.04));
+    --amm-raise: var(--am-raise, rgba(var(--center-channel-color-rgb), 0.08));
+    --amm-raise-2: var(--am-raise-2, rgba(var(--center-channel-color-rgb), 0.12));
+    --amm-hover: var(--am-hover, rgba(var(--center-channel-color-rgb), 0.08));
+    --amm-accent: var(--am-matter, var(--button-bg));
+    --amm-accent-text: var(--button-color, #fff);
+    --amm-danger: var(--am-danger, var(--error-text));
+    --amm-unread: #2DD4BF;
+
+    position: relative;
+    height: 100%;
+    overflow-y: auto;
+    color: var(--amm-text);
+}
+
+/* ---------- Classic versions of the mockup's blocks ---------- */
+
+.amm-root.amm-classic button {
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}
+
+.amm-app-panel {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+    padding: 10px 12px 16px;
+}
+
+.amm-app-h {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 2px 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amm-muted);
+}
+
+.amm-grow {
+    flex: 1;
+}
+
+.amm-root .amm-app-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: var(--amm-side);
+    color: var(--amm-text);
+    text-align: left;
+    text-decoration: none;
+}
+
+.amm-root .amm-app-row:hover {
+    background: var(--amm-raise);
+    text-decoration: none;
+}
+
+.amm-app-row b {
+    display: block;
+    overflow: hidden;
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.amm-app-row:not(.amm-unread) b {
+    font-weight: 400;
+}
+
+.amm-sub {
+    display: block;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--amm-muted);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.amm-dot-u {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--amm-unread);
+}
+
+.amm-av {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: hsl(var(--amm-h, 260) 55% 48%);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.amm-av.amm-sm {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+}
+
+.amm-ic {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.amm-ic.amm-sm {
+    width: 16px;
+    height: 16px;
+}
+
+.amm-ic.amm-xs {
+    width: 13px;
+    height: 13px;
+    vertical-align: -2px;
+    margin-right: 4px;
+}
+
+.amm-root .amm-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    color: var(--amm-muted);
+}
+
+.amm-root .amm-icon-btn:hover,
+.amm-root .amm-icon-btn.amm-on {
+    background: var(--amm-hover);
+    color: var(--amm-text);
+}
+
+.amm-root .amm-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
+    background: var(--amm-raise);
+    color: var(--amm-text);
+    font-weight: 600;
+}
+
+.amm-root .amm-btn:hover {
+    background: var(--amm-raise-2);
+}
+
+.amm-root .amm-btn.amm-primary {
+    background: var(--amm-accent);
+    color: var(--amm-accent-text);
+}
+
+.amm-root .amm-btn.amm-danger {
+    background: var(--amm-danger);
+    color: #fff;
+}
+
+.amm-root .amm-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    background: var(--amm-raise);
+    color: var(--amm-text-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.amm-empty {
+    padding: 28px 18px;
+    color: var(--amm-muted);
+    font-size: 14px;
+    text-align: center;
+}
+
+.amm-field {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    font-weight: 400;
+}
+
+.amm-field > span {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amm-muted);
+}
+
+.amm-field small {
+    color: var(--amm-muted);
+    font-size: 12.5px;
+}
+
+.amm-field input,
+.amm-field select,
+.amm-field textarea {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--amm-line);
+    border-radius: 8px;
+    background: var(--center-channel-bg);
+    color: var(--amm-text);
+    outline: none;
+}
+
+.amm-field textarea {
+    min-height: 80px;
+    padding: 8px 10px;
+    resize: vertical;
+}
+
+.amm-field input:focus,
+.amm-field select:focus,
+.amm-field textarea:focus {
+    border-color: var(--amm-accent);
+}
+
+/* ---------- Parts the mockup doesn't have, for both web apps ---------- */
+
+.amm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+
+.amm-folder-select {
+    min-width: 0;
+    max-width: 60%;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--amm-line);
+    border-radius: 8px;
+    background: var(--amm-side);
+    color: var(--amm-text);
+    font-weight: 600;
+}
+
+.amm-row-main {
+    min-width: 0;
+}
+
+.amm-subject {
+    margin: 4px 2px 0;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+.amm-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+}
+
+.amm-header-text {
+    min-width: 0;
+    font-size: 13.5px;
+}
+
+.amm-header-text > span {
+    display: inline;
+}
+
+.amm-header-text .amm-sub,
+.amm-header-text .am-sub {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.amm-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.amm-frame {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--amm-line);
+    border-radius: 9px;
+    background: #fff;
+}
+
+.amm-text {
+    padding: 4px 2px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.amm-notice,
+.amm-error {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--amm-side);
+    font-size: 13px;
+}
+
+.amm-error {
+    border-left: 3px solid var(--amm-danger);
+}
+
+.amm-toast {
+    margin: 10px 12px 0;
+}
+
+.amm-root .amm-link {
+    color: var(--amm-accent);
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.amm-card {
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid var(--amm-line);
+    border-radius: 10px;
+}
+
+.amm-card .am-field {
+    margin-bottom: 0;
+}
+
+.amm-fieldset {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.amm-fieldset legend {
+    margin-bottom: 6px;
+    padding: 0;
+    border: 0;
+}
+
+.amm-fieldset .am-field,
+.amm-app-panel > .am-field {
+    margin-bottom: 0;
+}
+
+.amm-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px;
+    gap: 10px;
+}
+
+/* Fusion only styles text inputs: passwords look the same */
+.amm-root .am-field input.amm-password {
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--am-line);
+    border-radius: 9px;
+    background: var(--am-side);
+    outline: none;
+}
+
+.amm-root .am-field input.amm-password:focus {
+    border-color: var(--am-matter);
+}
+
+.amm-form-head h3 {
+    margin: 4px 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.amm-form-head p {
+    margin: 0;
+    color: var(--amm-muted);
+    font-size: 13.5px;
+}
+
+.amm-note {
+    color: var(--amm-muted);
+    font-size: 12px;
+}
+
+.amm-body {
+    min-height: 220px;
+}
