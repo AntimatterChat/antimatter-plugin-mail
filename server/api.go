@@ -8,7 +8,9 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/gorilla/mux"
@@ -411,10 +413,20 @@ func (p *Plugin) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		perPage = defaultPerPage
 	}
 
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if utf8.RuneCountInString(query) > maxQueryLength {
+		p.writeError(w, newAPIError(http.StatusBadRequest, "the search is too long"))
+		return
+	}
+
 	var result *MessagePage
 	err = p.withIMAP(userID(r), func(_ *Account, session *imapSession) error {
 		var err error
-		result, err = session.ListMessages(folder, page, perPage)
+		if query != "" {
+			result, err = session.SearchMessages(folder, query, page, perPage)
+		} else {
+			result, err = session.ListMessages(folder, page, perPage)
+		}
 		return err
 	})
 	if err != nil {

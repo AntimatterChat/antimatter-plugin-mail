@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -70,7 +71,9 @@ type MessageSummary struct {
 
 // MessagePage is a page of the messages of a folder, newest first.
 type MessagePage struct {
-	Folder   string           `json:"folder"`
+	Folder string `json:"folder"`
+	// Query is the text searched for, if the page lists the results of a search.
+	Query    string           `json:"query,omitempty"`
 	Total    int              `json:"total"`
 	Page     int              `json:"page"`
 	PerPage  int              `json:"per_page"`
@@ -443,6 +446,37 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 	var seqSet imap.SeqSet
 	seqSet.AddRange(uint32(first), uint32(last))
 	if result.Messages, err = s.fetchSummaries(seqSet); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// maxQueryLength bounds the text messages are searched for.
+const maxQueryLength = 200
+
+// SearchMessages returns a page of the messages of a folder that contain a text, in their header
+// or body, newest first. Pages start at 0.
+func (s *imapSession) SearchMessages(folder, query string, page, perPage int) (*MessagePage, error) {
+	if _, err := s.selectFolder(folder, true); err != nil {
+		return nil, err
+	}
+	data, err := s.client.UIDSearch(&imap.SearchCriteria{Text: []string{query}}, nil).Wait()
+	if err != nil {
+		var imapErr *imap.Error
+		if errors.As(err, &imapErr) {
+			return nil, &apiError{status: http.StatusBadGateway, err: errors.Errorf("the mail server couldn't search: %s", imapErr.Text)}
+		}
+		return nil, errors.Wrap(err, "failed to search the messages")
+	}
+	uids := data.AllUIDs()
+	slices.SortFunc(uids, func(a, b imap.UID) int { return cmp.Compare(b, a) })
+
+	result := &MessagePage{Folder: folder, Query: query, Total: len(uids), Page: page, PerPage: perPage, Messages: []MessageSummary{}}
+	from := page * perPage
+	if from >= len(uids) {
+		return result, nil
+	}
+	if result.Messages, err = s.fetchSummaries(imap.UIDSetNum(uids[from:min(from+perPage, len(uids))]...)); err != nil {
 		return nil, err
 	}
 	return result, nil

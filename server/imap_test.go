@@ -207,6 +207,42 @@ func TestListMessages(t *testing.T) {
 	assert.Equal(t, 404, statusFor(err))
 }
 
+func TestSearchMessages(t *testing.T) {
+	server := startIMAPServer(t, imap.CapSet{imap.CapIMAP4rev1: {}})
+	for i := 1; i <= 5; i++ {
+		server.add(t, "INBOX", simpleMessage("Message "+strconv.Itoa(i), "Body of message "+strconv.Itoa(i)))
+	}
+	server.add(t, "INBOX", simpleMessage("Café", "Rendez-vous au café"))
+	session := server.dial(t)
+
+	page, err := session.SearchMessages("INBOX", "body of", 0, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 5, page.Total)
+	assert.Equal(t, "body of", page.Query)
+	require.Len(t, page.Messages, 2)
+	assert.Equal(t, "Message 5", page.Messages[0].Subject)
+	assert.Equal(t, "Body of message 5", page.Messages[0].Snippet)
+	assert.Equal(t, "Message 4", page.Messages[1].Subject)
+
+	page, err = session.SearchMessages("INBOX", "body of", 2, 2)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	assert.Equal(t, "Message 1", page.Messages[0].Subject)
+
+	page, err = session.SearchMessages("INBOX", "café", 0, 10)
+	require.NoError(t, err)
+	require.Len(t, page.Messages, 1)
+	assert.Equal(t, "Café", page.Messages[0].Subject)
+
+	page, err = session.SearchMessages("INBOX", "nothing like this", 0, 10)
+	require.NoError(t, err)
+	assert.Zero(t, page.Total)
+	assert.Empty(t, page.Messages)
+
+	_, err = session.SearchMessages("Nope", "x", 0, 10)
+	assert.Equal(t, 404, statusFor(err))
+}
+
 func TestMessageOperations(t *testing.T) {
 	server := startIMAPServer(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIMAP4rev2: {}}, "Trash", "Lab", "Sent")
 	server.add(t, "INBOX", multipartMessage)

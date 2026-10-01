@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -301,6 +302,23 @@ func TestAPISend(t *testing.T) {
 	assert.True(t, page.Messages[0].Answered)
 
 	w = e.request(t, http.MethodPost, "/api/v1/send", sendRequest{OutgoingMessage: OutgoingMessage{Subject: "nobody"}})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPISearch(t *testing.T) {
+	e := newTestEnv(t)
+	e.imap.add(t, "INBOX", multipartMessage)
+	e.imap.add(t, "INBOX", simpleMessage("Lunch", "Pizza?"))
+	e.connect(t)
+
+	w := e.request(t, http.MethodGet, "/api/v1/messages?folder=INBOX&q=pizza", nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	page := decode[MessagePage](t, w)
+	assert.Equal(t, 1, page.Total)
+	require.Len(t, page.Messages, 1)
+	assert.Equal(t, "Lunch", page.Messages[0].Subject)
+
+	w = e.request(t, http.MethodGet, "/api/v1/messages?folder=INBOX&q="+strings.Repeat("x", maxQueryLength+1), nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
