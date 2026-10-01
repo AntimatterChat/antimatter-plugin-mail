@@ -6,10 +6,12 @@ import {useIntl} from 'react-intl';
 
 import {am, own} from '../class_names';
 import * as client from '../client';
-import type {Account, Folder} from '../client';
+import type {Account, Folder, FullMessage} from '../client';
+import {displayName, emptyDraft, forwardDraft, formatAddresses, fullDate, replyDraft, type Draft} from '../utils';
 import {isFusionUI} from '../web_ui';
 
 import AccountForm from './account_form';
+import Compose from './compose';
 import MessageList from './message_list';
 import MessageView from './message_view';
 import {messages} from './messages';
@@ -17,13 +19,14 @@ import {messages} from './messages';
 type View =
     {kind: 'list'} |
     {kind: 'message'; uid: number} |
+    {kind: 'compose'; draft: Draft; back: View} |
     {kind: 'settings'};
 
 const INBOX = 'INBOX';
 
 // MailPanel is the mail app, shown in the right-hand panel.
 export default function MailPanel() {
-    const {formatMessage} = useIntl();
+    const {formatMessage, locale} = useIntl();
     const [account, setAccount] = useState<Account | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [allowInsecure, setAllowInsecure] = useState(false);
@@ -81,6 +84,23 @@ export default function MailPanel() {
         setReloadKey((k) => k + 1);
     };
 
+    const reply = (msg: FullMessage, all: boolean) => {
+        const sender = msg.from[0];
+        const header = formatMessage(messages.replyHeader, {date: fullDate(msg.date, locale), name: displayName(sender)});
+        setView({kind: 'compose', draft: replyDraft(msg, account?.email || '', all, header), back: view});
+    };
+
+    const forward = (msg: FullMessage) => {
+        const header = [
+            formatMessage(messages.forwardHeader),
+            `${formatMessage(messages.from)}: ${formatAddresses(msg.from)}`,
+            `${formatMessage(messages.subject)}: ${msg.subject}`,
+            `${formatMessage(messages.to)}: ${formatAddresses(msg.to)}`,
+            msg.date ? fullDate(msg.date, locale) : '',
+        ].filter(Boolean).join('\n');
+        setView({kind: 'compose', draft: forwardDraft(msg, header), back: view});
+    };
+
     let content: React.ReactNode;
     if (error && !loaded) {
         content = (
@@ -124,7 +144,21 @@ export default function MailPanel() {
                 uid={view.uid}
                 folders={folders}
                 onBack={backToList}
+                onReply={reply}
+                onForward={forward}
                 onChanged={onChanged}
+            />
+        );
+    } else if (view.kind === 'compose') {
+        content = (
+            <Compose
+                draft={view.draft}
+                onSent={() => {
+                    setNotice(formatMessage(messages.sent));
+                    setView(view.back.kind === 'compose' ? {kind: 'list'} : view.back);
+                    onChanged();
+                }}
+                onCancel={() => setView(view.back)}
             />
         );
     } else {
@@ -141,6 +175,7 @@ export default function MailPanel() {
                     setNotice('');
                     setView({kind: 'message', uid});
                 }}
+                onCompose={() => setView({kind: 'compose', draft: emptyDraft, back: {kind: 'list'}})}
                 onSettings={() => setView({kind: 'settings'})}
                 onRefresh={refresh}
             />

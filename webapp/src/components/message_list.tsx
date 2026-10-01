@@ -22,6 +22,7 @@ type Props = {
     reloadKey: number;
     onFolderChange: (folder: string) => void;
     onOpen: (uid: number) => void;
+    onCompose: () => void;
     onSettings: () => void;
     onRefresh: () => void;
 };
@@ -96,7 +97,7 @@ function appendPage(list: MessageSummary[], page: MessageSummary[]) {
 }
 
 // MessageList shows the messages of a folder, newest first.
-export default function MessageList({folder, folders, reloadKey, onFolderChange, onOpen, onSettings, onRefresh}: Props) {
+export default function MessageList({folder, folders, reloadKey, onFolderChange, onOpen, onCompose, onSettings, onRefresh}: Props) {
     const {formatMessage} = useIntl();
     const folderName = useFolderName();
     const [list, setList] = useState<MessageSummary[] | null>(null);
@@ -147,6 +148,14 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     ))}
                 </select>
                 <span className={am('grow')}/>
+                <button
+                    className={am('icon-btn')}
+                    title={formatMessage(messages.compose)}
+                    aria-label={formatMessage(messages.compose)}
+                    onClick={onCompose}
+                >
+                    <Icon name='pen'/>
+                </button>
                 <button
                     className={am('icon-btn')}
                     title={formatMessage(messages.refresh)}

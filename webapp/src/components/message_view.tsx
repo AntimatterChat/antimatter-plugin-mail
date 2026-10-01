@@ -17,6 +17,8 @@ type Props = {
     uid: number;
     folders: Folder[];
     onBack: () => void;
+    onReply: (msg: FullMessage, all: boolean) => void;
+    onForward: (msg: FullMessage) => void;
 
     // Called after the message was moved, deleted, or its read state changed
     onChanged: () => void;
@@ -73,7 +75,7 @@ function MessageFrame({html, remoteImages, title}: {html: string; remoteImages: 
 }
 
 // MessageView is the reading view of a message.
-export default function MessageView({folder, uid, folders, onBack, onChanged}: Props) {
+export default function MessageView({folder, uid, folders, onBack, onReply, onForward, onChanged}: Props) {
     const {formatMessage, locale} = useIntl();
     const [msg, setMsg] = useState<FullMessage | null>(null);
     const [remoteImages, setRemoteImages] = useState(false);
@@ -138,6 +140,30 @@ export default function MessageView({folder, uid, folders, onBack, onChanged}: P
                 <span className={am('grow')}/>
                 {msg && (
                     <>
+                        <button
+                            className={am('icon-btn')}
+                            title={formatMessage(messages.reply)}
+                            aria-label={formatMessage(messages.reply)}
+                            onClick={() => onReply(msg, false)}
+                        >
+                            <Icon name='reply'/>
+                        </button>
+                        <button
+                            className={am('icon-btn')}
+                            title={formatMessage(messages.replyAll)}
+                            aria-label={formatMessage(messages.replyAll)}
+                            onClick={() => onReply(msg, true)}
+                        >
+                            <Icon name='undo'/>
+                        </button>
+                        <button
+                            className={am('icon-btn')}
+                            title={formatMessage(messages.forward)}
+                            aria-label={formatMessage(messages.forward)}
+                            onClick={() => onForward(msg)}
+                        >
+                            <Icon name='forward'/>
+                        </button>
                         <button
                             className={am('icon-btn')}
                             title={formatMessage(messages.markUnread)}

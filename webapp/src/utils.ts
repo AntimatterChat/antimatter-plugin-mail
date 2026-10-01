@@ -1,7 +1,7 @@
 // Copyright (c) 2026-present Antimatter contributors.
 // See LICENSE.txt for license information.
 
-import type {Address} from './client';
+import type {Address, FullMessage} from './client';
 
 // displayName returns the name to show for an address.
 export function displayName(address?: Address): string {
@@ -110,4 +110,64 @@ export function formatSize(bytes: number): string {
         return `${Math.round(bytes / 1024)} KB`;
     }
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function prefixed(subject: string, prefix: string): string {
+    const re = new RegExp(`^${prefix}\\s*:`, 'i');
+    return re.test(subject.trim()) ? subject.trim() : `${prefix}: ${subject.trim()}`;
+}
+
+export function quote(text: string): string {
+    return text.replace(/\r\n/g, '\n').trimEnd().split('\n').map((line) => (line ? `> ${line}` : '>')).join('\n');
+}
+
+export type Draft = {
+    to: string;
+    cc: string;
+    bcc: string;
+    subject: string;
+    text: string;
+    inReplyTo?: string;
+    references?: string[];
+    replyTo?: {folder: string; uid: number};
+};
+
+export const emptyDraft: Draft = {to: '', cc: '', bcc: '', subject: '', text: ''};
+
+function sameAddress(a: Address, b: string) {
+    return a.email.toLowerCase() === b.toLowerCase();
+}
+
+// replyDraft starts a reply to a message, to its sender or to everyone. headerLine is the
+// translated "On {date}, {name} wrote:" line.
+export function replyDraft(msg: FullMessage, me: string, all: boolean, headerLine: string): Draft {
+    const to = msg.reply_to.length > 0 ? msg.reply_to : msg.from;
+    let cc: Address[] = [];
+    if (all) {
+        cc = [...msg.to, ...msg.cc].filter((a) => !sameAddress(a, me) && !to.some((t) => t.email.toLowerCase() === a.email.toLowerCase()));
+    }
+    const references = [...msg.references];
+    if (msg.message_id && !references.includes(msg.message_id)) {
+        references.push(msg.message_id);
+    }
+    return {
+        to: formatAddresses(to.filter((a) => !all || !sameAddress(a, me) || to.length === 1)),
+        cc: formatAddresses(cc),
+        bcc: '',
+        subject: prefixed(msg.subject, 'Re'),
+        text: `\n\n${headerLine}\n${quote(msg.text)}\n`,
+        ...(msg.message_id ? {inReplyTo: msg.message_id} : {}),
+        references,
+        replyTo: {folder: msg.folder, uid: msg.uid},
+    };
+}
+
+// forwardDraft starts forwarding a message. header is the translated block naming the original
+// sender, date, subject and recipients.
+export function forwardDraft(msg: FullMessage, header: string): Draft {
+    return {
+        ...emptyDraft,
+        subject: prefixed(msg.subject, 'Fwd'),
+        text: `\n\n${header}\n\n${msg.text.replace(/\r\n/g, '\n').trimEnd()}\n`,
+    };
 }

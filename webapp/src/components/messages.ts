@@ -37,6 +37,7 @@ export const messages = defineMessages({
     // List
     folder: {id: 'mail.folder', defaultMessage: 'Folder'},
     unreadCount: {id: 'mail.unread_count', defaultMessage: '{count} unread'},
+    compose: {id: 'mail.compose', defaultMessage: 'New message'},
     refresh: {id: 'mail.refresh', defaultMessage: 'Refresh'},
     settings: {id: 'mail.settings', defaultMessage: 'Account settings'},
     emptyFolder: {id: 'mail.empty_folder', defaultMessage: 'No messages here.'},
@@ -55,8 +56,14 @@ export const messages = defineMessages({
 
     // Reading view
     back: {id: 'mail.back', defaultMessage: 'Back to the list'},
+    from: {id: 'mail.from', defaultMessage: 'From'},
     to: {id: 'mail.to', defaultMessage: 'To'},
     cc: {id: 'mail.cc', defaultMessage: 'Cc'},
+    bcc: {id: 'mail.bcc', defaultMessage: 'Bcc'},
+    subject: {id: 'mail.subject', defaultMessage: 'Subject'},
+    reply: {id: 'mail.reply', defaultMessage: 'Reply'},
+    replyAll: {id: 'mail.reply_all', defaultMessage: 'Reply all'},
+    forward: {id: 'mail.forward', defaultMessage: 'Forward'},
     markUnread: {id: 'mail.mark_unread', defaultMessage: 'Mark as unread'},
     moveTo: {id: 'mail.move_to', defaultMessage: 'Move to…'},
     delete: {id: 'mail.delete', defaultMessage: 'Delete'},
@@ -65,4 +72,15 @@ export const messages = defineMessages({
     remoteImagesShow: {id: 'mail.remote_images.show', defaultMessage: 'Show images'},
     attachments: {id: 'mail.attachments', defaultMessage: 'Attachments'},
     download: {id: 'mail.download', defaultMessage: 'Download {filename}'},
+    replyHeader: {id: 'mail.reply.header', defaultMessage: 'On {date}, {name} wrote:'},
+    forwardHeader: {id: 'mail.forward.header', defaultMessage: '---------- Forwarded message ----------'},
+
+    // Compose
+    send: {id: 'mail.send', defaultMessage: 'Send'},
+    sending: {id: 'mail.sending', defaultMessage: 'Sending…'},
+    showCcBcc: {id: 'mail.show_cc_bcc', defaultMessage: 'Cc and Bcc'},
+    discard: {id: 'mail.discard', defaultMessage: 'Discard'},
+    discardConfirm: {id: 'mail.discard.confirm', defaultMessage: 'Discard this message?'},
+    sent: {id: 'mail.sent', defaultMessage: 'Message sent.'},
+    noRecipients: {id: 'mail.no_recipients', defaultMessage: 'Add at least one recipient.'},
 });
