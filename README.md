@@ -12,6 +12,10 @@ own mailbox over IMAP (reading) and SMTP (sending).
   from the panel. The servers must accept the credentials before they are saved; passwords are
   stored encrypted (AES-GCM, with a key the plugin keeps in its KV store) and never logged. Use an
   app password where your provider offers them.
+- **Sign in with Google or Microsoft.** Once the admin sets up an OAuth client for them, Gmail,
+  Google Workspace, Outlook.com and Microsoft 365 users connect their mailbox by signing in with
+  their provider instead of typing passwords (see below). The plugin then signs in to IMAP and
+  SMTP with access tokens (XOAUTH2); the refresh token is stored encrypted like passwords.
 - **Read.** Folders, messages newest first with their snippet and unread state, and the reading view.
   HTML mail is sanitised on the server and shown in a sandboxed frame that runs no script; remote
   images are hidden until you ask for them. Attachments are downloaded, never opened in the app.
@@ -41,6 +45,55 @@ In **System Console > Plugins > Mail**:
   Turn it on for a mail server on your internal network.
 - **Allow unencrypted connections** (off): connections must use TLS or STARTTLS unless this is on.
 - **Unread check interval** (2 minutes) and **Largest message size** (25 MB).
+
+### Signing in with Google or Microsoft
+
+Both providers send users back to the same redirect URI, under the plugin's route:
+
+```
+<Site URL>/plugins/com.antimatterchat.mail/oauth/callback
+```
+
+for example `https://chat.example.com/plugins/com.antimatterchat.mail/oauth/callback`. The Site
+URL must be set in **System Console > Environment > Web Server**. Users get a "Sign in with"
+button in the mail panel for each provider whose client ID and secret are set.
+
+**Google** (Gmail and Google Workspace):
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project (or pick
+   one) and set up its **OAuth consent screen**: *Internal* for your Workspace users only, or
+   *External* for any Google account. Add the scope `https://mail.google.com/` (and `openid`,
+   `email`, `profile`).
+2. Under **APIs & Services > Credentials**, create an **OAuth client ID** of type *Web
+   application*, with the redirect URI above as an *Authorized redirect URI*.
+3. Copy its client ID and secret to **Google OAuth client ID** and **Google OAuth client secret**.
+
+`https://mail.google.com/` is a restricted scope: an *External* app in testing mode only works for
+the test users you list, and its sign-ins expire after seven days; publishing it to more than a
+hundred users needs Google's verification. *Internal* apps need neither. Workspace admins must
+allow IMAP for their users.
+
+**Microsoft** (Outlook.com and Microsoft 365):
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), under **App
+   registrations**, register an application. Pick the supported account types that match the
+   **Microsoft tenant** setting, and add the redirect URI above as a *Web* redirect URI.
+2. Under **API permissions**, add the delegated permissions `IMAP.AccessAsUser.All` and
+   `SMTP.Send` of *Office 365 Exchange Online* (under *APIs my organization uses*), and
+   `offline_access`, `openid`, `email` and `profile` of *Microsoft Graph*. Grant admin consent if
+   your users can't consent themselves.
+3. Under **Certificates & secrets**, create a client secret, and copy the application (client) ID
+   and the secret's value to **Microsoft OAuth client ID** and **Microsoft OAuth client secret**.
+   Client secrets expire: renew it before it does.
+4. Set **Microsoft tenant**: `common` (any account), `organizations`, `consumers`, or your
+   tenant's ID or domain to only let your organization's accounts in.
+
+Microsoft 365 turns off authenticated SMTP (SMTP AUTH) for many tenants and mailboxes: turn it on
+for the mailboxes that send mail from Antimatter (`Set-CASMailbox <user> -SmtpClientAuthenticationDisabled $false`),
+and make sure IMAP is allowed for them.
+
+Disconnecting a mailbox forgets its sign-in; users can also revoke the access from their Google
+or Microsoft account.
 
 ## Trying it out
 
