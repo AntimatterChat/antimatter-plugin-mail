@@ -63,6 +63,7 @@ type MessageSummary struct {
 	Unread         bool      `json:"unread"`
 	Flagged        bool      `json:"flagged"`
 	Answered       bool      `json:"answered"`
+	Draft          bool      `json:"draft"`
 	HasAttachments bool      `json:"has_attachments"`
 	Snippet        string    `json:"snippet"`
 }
@@ -456,6 +457,7 @@ func (s *imapSession) ListMessages(folder string, page, perPage int) (*MessagePa
 			Unread:   !slices.Contains(msg.Flags, imap.FlagSeen),
 			Flagged:  slices.Contains(msg.Flags, imap.FlagFlagged),
 			Answered: slices.Contains(msg.Flags, imap.FlagAnswered),
+			Draft:    slices.Contains(msg.Flags, imap.FlagDraft),
 			From:     []Address{},
 			To:       []Address{},
 		}
@@ -517,6 +519,7 @@ type MessageData struct {
 	Raw     []byte
 	Unread  bool
 	Flagged bool
+	Draft   bool
 }
 
 var errMessageNotFound = newAPIError(http.StatusNotFound, "message not found")
@@ -553,6 +556,7 @@ func (s *imapSession) GetMessage(folder string, uid uint32, maxSize int64) (*Mes
 		Raw:     bodies[0].FindBodySection(section),
 		Unread:  !slices.Contains(info[0].Flags, imap.FlagSeen),
 		Flagged: slices.Contains(info[0].Flags, imap.FlagFlagged),
+		Draft:   slices.Contains(info[0].Flags, imap.FlagDraft),
 	}, nil
 }
 
@@ -652,4 +656,72 @@ func (s *imapSession) appendMessage(folder string, raw []byte, flags []imap.Flag
 		return 0, errors.Wrap(err, "failed to store the message")
 	}
 	return data.UID, nil
+}
+
+// draftsFolder is the name of the drafts folder created on servers that have none.
+const draftsFolder = "Drafts"
+
+// SaveDraft stores a draft in the drafts folder, creating the folder if needed, and deletes the
+// earlier versions of the draft: the messages of the folder with the same Message-ID. It returns
+// the folder and the UID of the draft.
+func (s *imapSession) SaveDraft(raw []byte, messageID string) (string, uint32, error) {
+	folder, err := s.roleFolder(RoleDrafts)
+	if err != nil {
+		return "", 0, err
+	}
+	if folder == "" {
+		folder = draftsFolder
+		if err := s.client.Create(folder, nil).Wait(); err != nil {
+			return "", 0, errors.Wrap(err, "failed to create the drafts folder")
+		}
+	}
+	uid, err := s.appendMessage(folder, raw, []imap.Flag{imap.FlagDraft, imap.FlagSeen})
+	if err != nil {
+		return "", 0, err
+	}
+
+	if _, err := s.selectFolder(folder, false); err != nil {
+		return "", 0, err
+	}
+	versions, err := s.searchMessageID(messageID)
+	if err != nil {
+		return "", 0, err
+	}
+	if uid == 0 && len(versions) > 0 {
+		// Without UIDPLUS: UIDs grow, so the newest version is the one just stored
+		uid = slices.Max(versions)
+	}
+	versions = slices.DeleteFunc(versions, func(v imap.UID) bool { return v == uid })
+	if len(versions) > 0 {
+		if err := s.expunge(imap.UIDSetNum(versions...)); err != nil {
+			return "", 0, err
+		}
+	}
+	return folder, uint32(uid), nil
+}
+
+// DeleteDrafts deletes the versions of a draft for good.
+func (s *imapSession) DeleteDrafts(messageID string) error {
+	folder, err := s.roleFolder(RoleDrafts)
+	if err != nil || folder == "" {
+		return err
+	}
+	if _, err := s.selectFolder(folder, false); err != nil {
+		return err
+	}
+	versions, err := s.searchMessageID(messageID)
+	if err != nil || len(versions) == 0 {
+		return err
+	}
+	return s.expunge(imap.UIDSetNum(versions...))
+}
+
+// searchMessageID returns the UIDs of the messages of the selected folder with a Message-ID.
+func (s *imapSession) searchMessageID(messageID string) ([]imap.UID, error) {
+	criteria := &imap.SearchCriteria{Header: []imap.SearchCriteriaHeaderField{{Key: "Message-ID", Value: "<" + messageID + ">"}}}
+	data, err := s.client.UIDSearch(criteria, nil).Wait()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to search the drafts")
+	}
+	return data.AllUIDs(), nil
 }

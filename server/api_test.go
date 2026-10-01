@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -297,5 +299,87 @@ func TestAPISend(t *testing.T) {
 	assert.True(t, page.Messages[0].Answered)
 
 	w = e.request(t, http.MethodPost, "/api/v1/send", sendRequest{OutgoingMessage: OutgoingMessage{Subject: "nobody"}})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIDrafts(t *testing.T) {
+	e := newTestEnv(t)
+	e.connect(t)
+
+	type savedDraft struct {
+		Folder    string `json:"folder"`
+		UID       uint32 `json:"uid"`
+		MessageID string `json:"message_id"`
+	}
+	drafts := func() []MessageSummary {
+		page, err := e.imap.dial(t).ListMessages("Drafts", 0, 10)
+		require.NoError(t, err)
+		return page.Messages
+	}
+
+	// A new draft, without recipients yet: the server has no drafts folder, it's created
+	w := e.request(t, http.MethodPut, "/api/v1/draft", OutgoingMessage{Subject: "Beam", Text: "First words"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	first := decode[savedDraft](t, w)
+	assert.Equal(t, "Drafts", first.Folder)
+	assert.NotEmpty(t, first.MessageID)
+	require.Len(t, drafts(), 1)
+	assert.True(t, drafts()[0].Draft)
+	assert.False(t, drafts()[0].Unread)
+
+	// Saving it again replaces it
+	w = e.request(t, http.MethodPut, "/api/v1/draft", OutgoingMessage{
+		To:        []Address{{Email: "marie@example.com"}},
+		Bcc:       []Address{{Email: "kenji@example.com"}},
+		Subject:   "Beam schedule",
+		Text:      "More words",
+		MessageID: first.MessageID,
+	})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	second := decode[savedDraft](t, w)
+	assert.Equal(t, first.MessageID, second.MessageID)
+	assert.NotEqual(t, first.UID, second.UID)
+	list := drafts()
+	require.Len(t, list, 1)
+	assert.Equal(t, second.UID, list[0].UID)
+
+	// Another draft is kept apart
+	w = e.request(t, http.MethodPut, "/api/v1/draft", OutgoingMessage{Text: "Other"})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	other := decode[savedDraft](t, w)
+	require.Len(t, drafts(), 2)
+
+	// Reopened with its Bcc recipients
+	w = e.request(t, http.MethodGet, "/api/v1/message?folder=Drafts&uid="+strconv.Itoa(int(second.UID)), nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	msg := decode[FullMessage](t, w)
+	assert.True(t, msg.Draft)
+	assert.Equal(t, first.MessageID, msg.MessageID)
+	assert.Equal(t, []Address{{Email: "kenji@example.com"}}, msg.Bcc)
+	assert.Equal(t, "More words", msg.Text)
+
+	// Sending it deletes it, and doesn't send the Bcc header
+	w = e.request(t, http.MethodPost, "/api/v1/send", sendRequest{OutgoingMessage: OutgoingMessage{
+		To:        msg.To,
+		Bcc:       msg.Bcc,
+		Subject:   msg.Subject,
+		Text:      msg.Text,
+		MessageID: msg.MessageID,
+	}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Len(t, e.smtp.received, 1)
+	assert.Equal(t, []string{"marie@example.com", "kenji@example.com"}, e.smtp.received[0].to)
+	assert.NotContains(t, e.smtp.received[0].data, "kenji@example.com")
+	assert.NotContains(t, e.smtp.received[0].data, first.MessageID, "the sent message has its own Message-ID")
+	list = drafts()
+	require.Len(t, list, 1)
+	assert.Equal(t, other.UID, list[0].UID)
+
+	// Discarding a draft
+	w = e.request(t, http.MethodDelete, "/api/v1/draft?message_id="+url.QueryEscape(other.MessageID), nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Empty(t, drafts())
+
+	w = e.request(t, http.MethodDelete, "/api/v1/draft?message_id=bad%3Eid", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

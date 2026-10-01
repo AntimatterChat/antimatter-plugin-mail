@@ -39,6 +39,9 @@ type OutgoingMessage struct {
 	InReplyTo string `json:"in_reply_to"`
 	// References are the Message-IDs of the thread, if any.
 	References []string `json:"references"`
+
+	// MessageID identifies a draft across its saves. Sending the message deletes the draft.
+	MessageID string `json:"message_id,omitempty"`
 }
 
 // cleanHeader removes the line breaks of a header value.
@@ -82,32 +85,35 @@ func (m *OutgoingMessage) Recipients() ([]string, error) {
 	return recipients, nil
 }
 
-// buildMessage writes a message in the Internet Message Format. Bcc recipients aren't written.
-func buildMessage(account *Account, msg *OutgoingMessage, now time.Time) ([]byte, error) {
+// buildMessage writes a message in the Internet Message Format, returning it with its Message-ID.
+// Bcc recipients are only written in drafts, which keep the Message-ID they were given and can
+// have no recipient.
+func buildMessage(account *Account, msg *OutgoingMessage, now time.Time, draft bool) ([]byte, string, error) {
 	count := len(msg.To) + len(msg.Cc) + len(msg.Bcc)
-	if count == 0 {
-		return nil, newAPIError(http.StatusBadRequest, "add at least one recipient")
+	if count == 0 && !draft {
+		return nil, "", newAPIError(http.StatusBadRequest, "add at least one recipient")
 	}
 	if count > maxRecipients {
-		return nil, newAPIError(http.StatusBadRequest, "too many recipients")
+		return nil, "", newAPIError(http.StatusBadRequest, "too many recipients")
 	}
 	if len(msg.Subject) > maxSubjectSize {
-		return nil, newAPIError(http.StatusBadRequest, "the subject is too long")
+		return nil, "", newAPIError(http.StatusBadRequest, "the subject is too long")
 	}
 	if len(msg.Text) > maxBodySize {
-		return nil, newAPIError(http.StatusBadRequest, "the message is too long")
+		return nil, "", newAPIError(http.StatusBadRequest, "the message is too long")
 	}
 
 	to, err := toMailAddresses(msg.To)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	cc, err := toMailAddresses(msg.Cc)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if _, err = toMailAddresses(msg.Bcc); err != nil {
-		return nil, err
+	bcc, err := toMailAddresses(msg.Bcc)
+	if err != nil {
+		return nil, "", err
 	}
 
 	var header mail.Header
@@ -119,12 +125,20 @@ func buildMessage(account *Account, msg *OutgoingMessage, now time.Time) ([]byte
 	if len(cc) > 0 {
 		header.SetAddressList("Cc", cc)
 	}
+	if len(bcc) > 0 && draft {
+		header.SetAddressList("Bcc", bcc)
+	}
 	header.SetSubject(cleanHeader(msg.Subject))
 
-	domain := account.Email[strings.LastIndex(account.Email, "@")+1:]
-	if err := header.GenerateMessageIDWithHostname(domain); err != nil {
-		return nil, errors.Wrap(err, "failed to generate a message ID")
+	if draft && validMessageID(msg.MessageID) {
+		header.SetMessageID(msg.MessageID)
+	} else {
+		domain := account.Email[strings.LastIndex(account.Email, "@")+1:]
+		if err := header.GenerateMessageIDWithHostname(domain); err != nil {
+			return nil, "", errors.Wrap(err, "failed to generate a message ID")
+		}
 	}
+	messageID, _ := header.MessageID()
 	if validMessageID(msg.InReplyTo) {
 		header.SetMsgIDList("In-Reply-To", []string{msg.InReplyTo})
 	}
@@ -143,16 +157,16 @@ func buildMessage(account *Account, msg *OutgoingMessage, now time.Time) ([]byte
 	var buf bytes.Buffer
 	w, err := mail.CreateSingleInlineWriter(&buf, header)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to write the message")
+		return nil, "", errors.Wrap(err, "failed to write the message")
 	}
 	text := strings.ReplaceAll(strings.ReplaceAll(msg.Text, "\r\n", "\n"), "\n", "\r\n")
 	if _, err := io.WriteString(w, text); err != nil {
-		return nil, errors.Wrap(err, "failed to write the message")
+		return nil, "", errors.Wrap(err, "failed to write the message")
 	}
 	if err := w.Close(); err != nil {
-		return nil, errors.Wrap(err, "failed to write the message")
+		return nil, "", errors.Wrap(err, "failed to write the message")
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), messageID, nil
 }
 
 // smtpOptions say how to connect to SMTP servers.

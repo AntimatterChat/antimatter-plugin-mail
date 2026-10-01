@@ -94,6 +94,8 @@ func (p *Plugin) newRouter() *mux.Router {
 	api.HandleFunc("/messages/move", p.handleMove).Methods(http.MethodPost)
 	api.HandleFunc("/messages/delete", p.handleDelete).Methods(http.MethodPost)
 	api.HandleFunc("/send", p.handleSend).Methods(http.MethodPost)
+	api.HandleFunc("/draft", p.handleSaveDraft).Methods(http.MethodPut)
+	api.HandleFunc("/draft", p.handleDeleteDraft).Methods(http.MethodDelete)
 	api.HandleFunc("/unread", p.handleGetUnread).Methods(http.MethodGet)
 	api.HandleFunc("/share", p.handleShare).Methods(http.MethodPost)
 
@@ -389,7 +391,7 @@ func (p *Plugin) handleGetMessage(w http.ResponseWriter, r *http.Request) {
 		if msg, err = parseMessage(data.Raw, remoteImages); err != nil {
 			return err
 		}
-		msg.Folder, msg.UID, msg.Unread, msg.Flagged = folder, uid, data.Unread, data.Flagged
+		msg.Folder, msg.UID, msg.Unread, msg.Flagged, msg.Draft = folder, uid, data.Unread, data.Flagged, data.Draft
 		if markRead && data.Unread {
 			if err := session.SetFlag(folder, []uint32{uid}, imap.FlagSeen, true); err != nil {
 				return err
@@ -542,7 +544,7 @@ func (p *Plugin) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, err := buildMessage(account, &req.OutgoingMessage, time.Now())
+	raw, _, err := buildMessage(account, &req.OutgoingMessage, time.Now(), false)
 	if err != nil {
 		p.writeError(w, err)
 		return
@@ -573,7 +575,12 @@ func (p *Plugin) handleSend(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if req.ReplyTo != nil && req.ReplyTo.Folder != "" && req.ReplyTo.UID != 0 {
-			return session.SetFlag(req.ReplyTo.Folder, []uint32{req.ReplyTo.UID}, imap.FlagAnswered, true)
+			if err := session.SetFlag(req.ReplyTo.Folder, []uint32{req.ReplyTo.UID}, imap.FlagAnswered, true); err != nil {
+				return err
+			}
+		}
+		if validMessageID(req.MessageID) {
+			return session.DeleteDrafts(req.MessageID)
 		}
 		return nil
 	})
@@ -607,4 +614,50 @@ func (p *Plugin) handleGetUnread(w http.ResponseWriter, r *http.Request) {
 	}
 	p.unread.Record(userID(r), unread)
 	p.writeJSON(w, map[string]int{"unread": unread})
+}
+
+// handleSaveDraft stores a draft in the drafts folder, replacing its earlier version. A draft
+// without a Message-ID is a new one: the response gives the Message-ID to save it again with.
+func (p *Plugin) handleSaveDraft(w http.ResponseWriter, r *http.Request) {
+	var req OutgoingMessage
+	if err := readJSON(w, r, &req); err != nil {
+		p.writeError(w, err)
+		return
+	}
+	var result struct {
+		Folder    string `json:"folder"`
+		UID       uint32 `json:"uid"`
+		MessageID string `json:"message_id"`
+	}
+	err := p.withIMAP(userID(r), func(account *Account, session *imapSession) error {
+		raw, messageID, err := buildMessage(account, &req, time.Now(), true)
+		if err != nil {
+			return err
+		}
+		result.MessageID = messageID
+		result.Folder, result.UID, err = session.SaveDraft(raw, messageID)
+		return err
+	})
+	if err != nil {
+		p.writeError(w, err)
+		return
+	}
+	p.writeJSON(w, result)
+}
+
+// handleDeleteDraft deletes a draft for good, with its earlier versions.
+func (p *Plugin) handleDeleteDraft(w http.ResponseWriter, r *http.Request) {
+	messageID := r.URL.Query().Get("message_id")
+	if !validMessageID(messageID) {
+		p.writeError(w, newAPIError(http.StatusBadRequest, "invalid draft"))
+		return
+	}
+	err := p.withIMAP(userID(r), func(_ *Account, session *imapSession) error {
+		return session.DeleteDrafts(messageID)
+	})
+	if err != nil {
+		p.writeError(w, err)
+		return
+	}
+	p.writeJSON(w, map[string]string{"status": "ok"})
 }

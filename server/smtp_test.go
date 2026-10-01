@@ -22,7 +22,7 @@ func TestBuildMessage(t *testing.T) {
 	account := testAccount()
 	now := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
 
-	raw, err := buildMessage(account, &OutgoingMessage{
+	raw, _, err := buildMessage(account, &OutgoingMessage{
 		To:         []Address{{Name: "Marie Laurent", Email: "marie@example.com"}, {Email: "Lena <lena@example.com>"}},
 		Cc:         []Address{{Email: "kenji@example.com"}},
 		Bcc:        []Address{{Email: "secret@example.com"}},
@@ -30,7 +30,7 @@ func TestBuildMessage(t *testing.T) {
 		Text:       "Wednesday works — see you there.\n\n> Attached the draft",
 		InReplyTo:  "draft-2@example.com",
 		References: []string{"draft-1@example.com", "bad id>", "draft-2@example.com"},
-	}, now)
+	}, now, false)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "secret@example.com", "Bcc recipients aren't written")
 	assert.NotContains(t, string(raw), "\r\nBcc:")
@@ -47,9 +47,9 @@ func TestBuildMessage(t *testing.T) {
 	assert.Equal(t, []string{"draft-1@example.com", "draft-2@example.com"}, msg.References)
 	assert.Contains(t, msg.MessageID, "@example.com")
 
-	_, err = buildMessage(account, &OutgoingMessage{Subject: "nobody"}, now)
+	_, _, err = buildMessage(account, &OutgoingMessage{Subject: "nobody"}, now, false)
 	assert.Equal(t, 400, statusFor(err))
-	_, err = buildMessage(account, &OutgoingMessage{To: []Address{{Email: "not an address"}}}, now)
+	_, _, err = buildMessage(account, &OutgoingMessage{To: []Address{{Email: "not an address"}}}, now, false)
 	assert.Equal(t, 400, statusFor(err))
 }
 

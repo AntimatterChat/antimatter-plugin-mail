@@ -52,11 +52,13 @@ type FullMessage struct {
 	From       []Address `json:"from"`
 	To         []Address `json:"to"`
 	Cc         []Address `json:"cc"`
+	Bcc        []Address `json:"bcc"`
 	ReplyTo    []Address `json:"reply_to"`
 	Subject    string    `json:"subject"`
 	Date       int64     `json:"date"`
 	Unread     bool      `json:"unread"`
 	Flagged    bool      `json:"flagged"`
+	Draft      bool      `json:"draft"`
 
 	// Text is the plain text of the message, made from its HTML if it has no text part.
 	Text string `json:"text"`
@@ -148,6 +150,7 @@ func parseMessage(raw []byte, allowRemoteImages bool) (*FullMessage, error) {
 		From:        headerAddresses(header, "From"),
 		To:          headerAddresses(header, "To"),
 		Cc:          headerAddresses(header, "Cc"),
+		Bcc:         headerAddresses(header, "Bcc"),
 		ReplyTo:     headerAddresses(header, "Reply-To"),
 		InReplyTo:   []string{},
 		References:  []string{},
