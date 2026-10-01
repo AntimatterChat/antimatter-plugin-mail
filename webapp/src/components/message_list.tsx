@@ -25,7 +25,21 @@ type Props = {
     onCompose: () => void;
     onSettings: () => void;
     onRefresh: () => void;
+
+    // Called after messages were marked or deleted from the list
+    onChanged: () => void;
 };
+
+// MAX_UIDS is the number of messages one request acts on, as the server allows.
+const MAX_UIDS = 500;
+
+function chunks(uids: number[]) {
+    const result: number[][] = [];
+    for (let i = 0; i < uids.length; i += MAX_UIDS) {
+        result.push(uids.slice(i, i + MAX_UIDS));
+    }
+    return result;
+}
 
 export function useFolderName() {
     const {formatMessage} = useIntl();
@@ -42,7 +56,15 @@ export function useFolderName() {
     }, [formatMessage]);
 }
 
-function MessageRow({message, sentFolder, onOpen}: {message: MessageSummary; sentFolder: boolean; onOpen: (summary: MessageSummary) => void}) {
+type RowProps = {
+    message: MessageSummary;
+    sentFolder: boolean;
+    selected: boolean;
+    onSelect: (uid: number, selected: boolean) => void;
+    onOpen: (summary: MessageSummary) => void;
+};
+
+function MessageRow({message, sentFolder, selected, onSelect, onOpen}: RowProps) {
     const {formatMessage, locale} = useIntl();
 
     // The sent folder shows who messages went to
@@ -52,40 +74,49 @@ function MessageRow({message, sentFolder, onOpen}: {message: MessageSummary; sen
     const subject = message.subject || formatMessage(messages.noSubject);
 
     return (
-        <button
-            className={am('app-row', {unread: message.unread})}
-            onClick={() => onOpen(message)}
-        >
-            <span
-                className={am('av', 'sm')}
-                style={{'--am-h': hue(name), '--amm-h': hue(name)} as React.CSSProperties}
-                aria-hidden='true'
+        <div className={own('row-wrap', {selected})}>
+            <input
+                type='checkbox'
+                className={own('row-check')}
+                checked={selected}
+                aria-label={formatMessage(messages.selectMessage, {subject})}
+                onChange={(e) => onSelect(message.uid, e.target.checked)}
+            />
+            <button
+                className={am('app-row', {unread: message.unread})}
+                onClick={() => onOpen(message)}
             >
-                {initials(name)}
-            </span>
-            <span className={own('row-main')}>
-                <b>{`${name} — ${subject}`}</b>
-                <span className={am('sub')}>{message.snippet}</span>
-            </span>
-            <span className={am('sub')}>
-                {message.has_attachments && (
-                    <span title={formatMessage(messages.hasAttachments)}>
-                        <Icon
-                            name='attach'
-                            size='xs'
+                <span
+                    className={am('av', 'sm')}
+                    style={{'--am-h': hue(name), '--amm-h': hue(name)} as React.CSSProperties}
+                    aria-hidden='true'
+                >
+                    {initials(name)}
+                </span>
+                <span className={own('row-main')}>
+                    <b>{`${name} — ${subject}`}</b>
+                    <span className={am('sub')}>{message.snippet}</span>
+                </span>
+                <span className={am('sub')}>
+                    {message.has_attachments && (
+                        <span title={formatMessage(messages.hasAttachments)}>
+                            <Icon
+                                name='attach'
+                                size='xs'
+                            />
+                        </span>
+                    )}
+                    {message.unread && (
+                        <span
+                            className={am('dot-u')}
+                            style={{display: 'inline-block', marginRight: 6}}
+                            title={formatMessage(messages.unreadMessage)}
                         />
-                    </span>
-                )}
-                {message.unread && (
-                    <span
-                        className={am('dot-u')}
-                        style={{display: 'inline-block', marginRight: 6}}
-                        title={formatMessage(messages.unreadMessage)}
-                    />
-                )}
-                {date.kind === 'yesterday' ? formatMessage(messages.yesterday) : date.text}
-            </span>
-        </button>
+                    )}
+                    {date.kind === 'yesterday' ? formatMessage(messages.yesterday) : date.text}
+                </span>
+            </button>
+        </div>
     );
 }
 
@@ -97,7 +128,7 @@ function appendPage(list: MessageSummary[], page: MessageSummary[]) {
 }
 
 // MessageList shows the messages of a folder, newest first.
-export default function MessageList({folder, folders, reloadKey, onFolderChange, onOpen, onCompose, onSettings, onRefresh}: Props) {
+export default function MessageList({folder, folders, reloadKey, onFolderChange, onOpen, onCompose, onSettings, onRefresh, onChanged}: Props) {
     const {formatMessage} = useIntl();
     const folderName = useFolderName();
     const [list, setList] = useState<MessageSummary[] | null>(null);
@@ -105,6 +136,8 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
     const [page, setPage] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [selected, setSelected] = useState<Set<number>>(new Set());
+    const [busy, setBusy] = useState(false);
 
     const load = useCallback(async (pageToLoad: number) => {
         setLoading(true);
@@ -123,11 +156,67 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
 
     useEffect(() => {
         setList(null);
+        setSelected(new Set());
         load(0);
     }, [load, reloadKey]);
 
     const current = folders.find((f) => f.name === folder);
     const sentFolder = current?.role === 'sent' || current?.role === 'drafts';
+
+    const select = useCallback((uid: number, on: boolean) => {
+        setSelected((previous) => {
+            const next = new Set(previous);
+            if (on) {
+                next.add(uid);
+            } else {
+                next.delete(uid);
+            }
+            return next;
+        });
+    }, []);
+    const allSelected = Boolean(list?.length) && list?.every((m) => selected.has(m.uid));
+
+    // act runs an action on the selected messages, then updates the list
+    const act = async (action: (uids: number[]) => Promise<unknown>, update: (shown: MessageSummary[], uids: Set<number>) => MessageSummary[]) => {
+        const uids = Array.from(selected);
+        setBusy(true);
+        setError('');
+        try {
+            for (const chunk of chunks(uids)) {
+                // eslint-disable-next-line no-await-in-loop
+                await action(chunk);
+            }
+            const done = new Set(uids);
+            setList((shown) => shown && update(shown, done));
+            setSelected(new Set());
+            onChanged();
+            return true;
+        } catch (err) {
+            setError((err as Error).message);
+            return false;
+        } finally {
+            setBusy(false);
+        }
+    };
+    const markSelected = (read: boolean) => act(
+        (uids) => client.setFlag(folder, uids, 'seen', read),
+        (shown, uids) => shown.map((m) => (uids.has(m.uid) ? {...m, unread: !read} : m)),
+    );
+    const deleteSelected = async () => {
+        const count = selected.size;
+
+        // eslint-disable-next-line no-alert
+        if (current?.role === 'trash' && !window.confirm(formatMessage(messages.deleteSelectedForever, {count}))) {
+            return;
+        }
+        const deleted = await act(
+            (uids) => client.deleteMessages(folder, uids),
+            (shown, uids) => shown.filter((m) => !uids.has(m.uid)),
+        );
+        if (deleted) {
+            setTotal((t) => Math.max(0, t - count));
+        }
+    };
 
     return (
         <div className={am('app-panel')}>
@@ -174,9 +263,56 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                 </button>
             </div>
             <div className={am('app-h')}>
+                {Boolean(list?.length) && (
+                    <input
+                        type='checkbox'
+                        className={own('row-check')}
+                        checked={allSelected}
+                        aria-label={formatMessage(messages.selectAll)}
+                        title={formatMessage(messages.selectAll)}
+                        onChange={(e) => setSelected(new Set(e.target.checked ? list?.map((m) => m.uid) : []))}
+                    />
+                )}
                 <span className={am('grow')}>{current ? folderName(current) : folder}</span>
                 {Boolean(current?.unread) && <span>{formatMessage(messages.unreadCount, {count: current?.unread})}</span>}
             </div>
+            {selected.size > 0 && (
+                <div className={own('actions', 'selection')}>
+                    <span className={am('sub')}>{formatMessage(messages.selectedCount, {count: selected.size})}</span>
+                    <span className={am('grow')}/>
+                    <button
+                        className={am('chip-btn')}
+                        disabled={busy}
+                        onClick={() => markSelected(true)}
+                    >
+                        {formatMessage(messages.markRead)}
+                    </button>
+                    <button
+                        className={am('chip-btn')}
+                        disabled={busy}
+                        onClick={() => markSelected(false)}
+                    >
+                        {formatMessage(messages.markUnread)}
+                    </button>
+                    <button
+                        className={am('icon-btn')}
+                        title={formatMessage(messages.delete)}
+                        aria-label={formatMessage(messages.delete)}
+                        disabled={busy}
+                        onClick={deleteSelected}
+                    >
+                        <Icon name='trash'/>
+                    </button>
+                    <button
+                        className={am('icon-btn')}
+                        title={formatMessage(messages.clearSelection)}
+                        aria-label={formatMessage(messages.clearSelection)}
+                        onClick={() => setSelected(new Set())}
+                    >
+                        <Icon name='x'/>
+                    </button>
+                </div>
+            )}
             {error && (
                 <div className={own('error')}>
                     {error}
@@ -196,6 +332,8 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     key={message.uid}
                     message={message}
                     sentFolder={sentFolder}
+                    selected={selected.has(message.uid)}
+                    onSelect={select}
                     onOpen={onOpen}
                 />
             ))}

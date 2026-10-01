@@ -207,6 +207,7 @@ export default function MailPanel() {
                 onCompose={() => setView({kind: 'compose', draft: emptyDraft, back: {kind: 'list'}})}
                 onSettings={() => setView({kind: 'settings'})}
                 onRefresh={refresh}
+                onChanged={onChanged}
             />
         );
     }

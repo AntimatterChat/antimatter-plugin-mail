@@ -491,3 +491,34 @@
 .amm-attachment-remove .amm-ic {
     margin: 0;
 }
+
+/* Rows with a checkbox to select them */
+.amm-row-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.amm-row-wrap > button {
+    flex: 1;
+    min-width: 0;
+}
+
+.amm-row-wrap.amm-selected > button {
+    outline: 2px solid var(--amm-accent);
+    outline-offset: -2px;
+}
+
+.amm-root input.amm-row-check {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--amm-accent);
+    cursor: pointer;
+}
+
+.amm-selection {
+    gap: 4px;
+}
