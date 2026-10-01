@@ -30,7 +30,7 @@ func TestBuildMessage(t *testing.T) {
 		Text:       "Wednesday works — see you there.\n\n> Attached the draft",
 		InReplyTo:  "draft-2@example.com",
 		References: []string{"draft-1@example.com", "bad id>", "draft-2@example.com"},
-	}, now, false)
+	}, now, false, nil)
 	require.NoError(t, err)
 	assert.NotContains(t, string(raw), "secret@example.com", "Bcc recipients aren't written")
 	assert.NotContains(t, string(raw), "\r\nBcc:")
@@ -47,9 +47,9 @@ func TestBuildMessage(t *testing.T) {
 	assert.Equal(t, []string{"draft-1@example.com", "draft-2@example.com"}, msg.References)
 	assert.Contains(t, msg.MessageID, "@example.com")
 
-	_, _, err = buildMessage(account, &OutgoingMessage{Subject: "nobody"}, now, false)
+	_, _, err = buildMessage(account, &OutgoingMessage{Subject: "nobody"}, now, false, nil)
 	assert.Equal(t, 400, statusFor(err))
-	_, _, err = buildMessage(account, &OutgoingMessage{To: []Address{{Email: "not an address"}}}, now, false)
+	_, _, err = buildMessage(account, &OutgoingMessage{To: []Address{{Email: "not an address"}}}, now, false, nil)
 	assert.Equal(t, 400, statusFor(err))
 }
 

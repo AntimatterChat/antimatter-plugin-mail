@@ -600,7 +600,19 @@ func (p *Plugin) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw, _, err := buildMessage(account, &req.OutgoingMessage, time.Now(), false)
+	var attachments []outgoingAttachment
+	if len(req.Attachments) > 0 {
+		err = p.withIMAP(userID(r), func(_ *Account, session *imapSession) error {
+			var err error
+			attachments, err = session.fetchAttachments(req.Attachments, p.getConfiguration().maxMessageSize())
+			return err
+		})
+		if err != nil {
+			p.writeError(w, err)
+			return
+		}
+	}
+	raw, _, err := buildMessage(account, &req.OutgoingMessage, time.Now(), false, attachments)
 	if err != nil {
 		p.writeError(w, err)
 		return
@@ -678,7 +690,8 @@ func (p *Plugin) handleGetUnread(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSaveDraft stores a draft in the drafts folder, replacing its earlier version. A draft
-// without a Message-ID is a new one: the response gives the Message-ID to save it again with.
+// without a Message-ID is a new one: the response gives the Message-ID to save it again with, and
+// where its attachments now are.
 func (p *Plugin) handleSaveDraft(w http.ResponseWriter, r *http.Request) {
 	var req OutgoingMessage
 	if err := readJSON(w, r, &req); err != nil {
@@ -689,15 +702,29 @@ func (p *Plugin) handleSaveDraft(w http.ResponseWriter, r *http.Request) {
 		Folder    string `json:"folder"`
 		UID       uint32 `json:"uid"`
 		MessageID string `json:"message_id"`
+		// Attachments are the attachments of the saved draft, in order, which the next save
+		// attaches again: the earlier versions of the draft are deleted.
+		Attachments []Attachment `json:"attachments"`
 	}
 	err := p.withIMAP(userID(r), func(account *Account, session *imapSession) error {
-		raw, messageID, err := buildMessage(account, &req, time.Now(), true)
+		attachments, err := session.fetchAttachments(req.Attachments, p.getConfiguration().maxMessageSize())
+		if err != nil {
+			return err
+		}
+		raw, messageID, err := buildMessage(account, &req, time.Now(), true, attachments)
 		if err != nil {
 			return err
 		}
 		result.MessageID = messageID
-		result.Folder, result.UID, err = session.SaveDraft(raw, messageID)
-		return err
+		if result.Folder, result.UID, err = session.SaveDraft(raw, messageID); err != nil {
+			return err
+		}
+		saved, err := parseMessage(raw, false)
+		if err != nil {
+			return err
+		}
+		result.Attachments = saved.Attachments
+		return nil
 	})
 	if err != nil {
 		p.writeError(w, err)

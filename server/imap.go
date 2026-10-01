@@ -737,3 +737,48 @@ func (s *imapSession) searchMessageID(messageID string) ([]imap.UID, error) {
 	}
 	return data.AllUIDs(), nil
 }
+
+// maxAttachments bounds the number of attachments of stored messages a message attaches again.
+const maxAttachments = 50
+
+// errAttachmentsTooLarge is returned when the attachments of a message are too large.
+var errAttachmentsTooLarge = newAPIError(http.StatusRequestEntityTooLarge, "the attachments are too large")
+
+// fetchAttachments returns the attachments of stored messages that a message attaches again, up
+// to maxSize bytes in all.
+func (s *imapSession) fetchAttachments(refs []AttachmentRef, maxSize int64) ([]outgoingAttachment, error) {
+	if len(refs) > maxAttachments {
+		return nil, newAPIError(http.StatusBadRequest, "too many attachments")
+	}
+	type messageKey struct {
+		folder string
+		uid    uint32
+	}
+	messages := map[messageKey][]byte{}
+	attachments := make([]outgoingAttachment, 0, len(refs))
+	var total int64
+	for _, ref := range refs {
+		if ref.Folder == "" || ref.UID == 0 || ref.ID == "" {
+			return nil, newAPIError(http.StatusBadRequest, "invalid attachment")
+		}
+		key := messageKey{ref.Folder, ref.UID}
+		raw, ok := messages[key]
+		if !ok {
+			data, err := s.GetMessage(ref.Folder, ref.UID, maxSize)
+			if err != nil {
+				return nil, err
+			}
+			raw = data.Raw
+			messages[key] = raw
+		}
+		attachment, content, err := openAttachment(raw, ref.ID)
+		if err != nil {
+			return nil, err
+		}
+		if total += int64(len(content)); total > maxSize {
+			return nil, errAttachmentsTooLarge
+		}
+		attachments = append(attachments, outgoingAttachment{Filename: attachment.Filename, ContentType: attachment.ContentType, Data: content})
+	}
+	return attachments, nil
+}

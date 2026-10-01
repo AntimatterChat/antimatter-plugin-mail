@@ -385,3 +385,64 @@ func TestAPIDrafts(t *testing.T) {
 	w = e.request(t, http.MethodDelete, "/api/v1/draft?message_id=bad%3Eid", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+func TestAPIForwardAttachments(t *testing.T) {
+	e := newTestEnv(t)
+	e.imap.add(t, "INBOX", multipartMessage)
+	e.connect(t)
+	pdf := AttachmentRef{Folder: "INBOX", UID: 1, ID: "2"}
+
+	// Kept in drafts
+	w := e.request(t, http.MethodPut, "/api/v1/draft", OutgoingMessage{Subject: "Fwd: Beam", Attachments: []AttachmentRef{pdf}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	draft := decode[struct {
+		UID         uint32       `json:"uid"`
+		Attachments []Attachment `json:"attachments"`
+	}](t, w)
+	require.Len(t, draft.Attachments, 1)
+	assert.Equal(t, "schedule.pdf", draft.Attachments[0].Filename)
+	w = e.request(t, http.MethodGet, "/api/v1/message?folder=Drafts&uid="+strconv.Itoa(int(draft.UID)), nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	msg := decode[FullMessage](t, w)
+	assert.Equal(t, draft.Attachments, msg.Attachments)
+	assert.Equal(t, "application/pdf", msg.Attachments[0].ContentType)
+
+	// Sent from the draft
+	w = e.request(t, http.MethodPost, "/api/v1/send", sendRequest{OutgoingMessage: OutgoingMessage{
+		To:          []Address{{Email: "marie@example.com"}},
+		Subject:     "Fwd: Beam",
+		Text:        "See attached.",
+		MessageID:   msg.MessageID,
+		Attachments: []AttachmentRef{{Folder: "Drafts", UID: msg.UID, ID: msg.Attachments[0].ID}},
+	}})
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Len(t, e.smtp.received, 1)
+	sent, err := parseMessage([]byte(e.smtp.received[0].data), false)
+	require.NoError(t, err)
+	assert.Equal(t, "See attached.", sent.Text)
+	require.Len(t, sent.Attachments, 1)
+	assert.Equal(t, "schedule.pdf", sent.Attachments[0].Filename)
+	_, content, err := openAttachment([]byte(e.smtp.received[0].data), sent.Attachments[0].ID)
+	require.NoError(t, err)
+	_, original, err := openAttachment(multipartMessage, "2")
+	require.NoError(t, err)
+	assert.Equal(t, original, content)
+
+	// Missing or too large attachments
+	w = e.request(t, http.MethodPost, "/api/v1/send", sendRequest{OutgoingMessage: OutgoingMessage{
+		To: []Address{{Email: "marie@example.com"}}, Attachments: []AttachmentRef{{Folder: "INBOX", UID: 1, ID: "9"}},
+	}})
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	session := e.imap.dial(t)
+	_, err = session.fetchAttachments([]AttachmentRef{pdf}, 100)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, statusFor(err))
+	many := make([]AttachmentRef, maxAttachments+1)
+	for i := range many {
+		many[i] = pdf
+	}
+	_, err = session.fetchAttachments(many, 1<<20)
+	assert.Equal(t, http.StatusBadRequest, statusFor(err))
+	attachments, err := session.fetchAttachments([]AttachmentRef{pdf, pdf}, 1<<20)
+	require.NoError(t, err)
+	assert.Len(t, attachments, 2)
+}
