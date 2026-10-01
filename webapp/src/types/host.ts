@@ -2,7 +2,7 @@
 // See LICENSE.txt for license information.
 
 import type React from 'react';
-import type {AnyAction, Store} from 'redux';
+import type {AnyAction, Reducer, Store} from 'redux';
 
 import type {GlobalState} from '@mattermost/types/store';
 
@@ -15,10 +15,20 @@ export type RightHandSidebarRegistration = {
     toggleRHSPlugin: AnyAction;
 };
 
+export type WebSocketMessage<T = Record<string, unknown>> = {
+    event: string;
+    data: T;
+    broadcast: {channel_id: string; team_id: string; user_id: string};
+};
+
 // The subset of the host's plugin registry this plugin uses.
 export interface PluginRegistry {
+    registerReducer(reducer: Reducer): void;
+    registerWebSocketEventHandler(event: string, handler: (msg: WebSocketMessage) => void): void;
+    registerReconnectHandler(handler: () => void): void;
     registerRightHandSidebarComponent(component: React.ComponentType, title: React.ReactNode): RightHandSidebarRegistration;
     registerAppBarComponent(options: {iconUrl: string; tooltipText: React.ReactNode; action: () => void}): string;
+    unregisterComponent(componentId: string): void;
 }
 
 export type PluginStore = Store<GlobalState>;

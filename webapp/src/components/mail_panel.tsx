@@ -3,10 +3,13 @@
 
 import React, {useCallback, useEffect, useState} from 'react';
 import {useIntl} from 'react-intl';
+import {useStore} from 'react-redux';
 
+import {loadUnread, setUnread} from '../actions';
 import {am, own} from '../class_names';
 import * as client from '../client';
 import type {Account, Folder, FullMessage} from '../client';
+import type {PluginStore} from '../types/host';
 import {displayName, emptyDraft, forwardDraft, formatAddresses, fullDate, replyDraft, type Draft} from '../utils';
 import {isFusionUI} from '../web_ui';
 
@@ -27,6 +30,7 @@ const INBOX = 'INBOX';
 // MailPanel is the mail app, shown in the right-hand panel.
 export default function MailPanel() {
     const {formatMessage, locale} = useIntl();
+    const store = useStore() as PluginStore;
     const [account, setAccount] = useState<Account | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [allowInsecure, setAllowInsecure] = useState(false);
@@ -71,7 +75,8 @@ export default function MailPanel() {
     // After reading, moving or deleting messages: the counts changed
     const onChanged = useCallback(() => {
         loadFolders();
-    }, [loadFolders]);
+        loadUnread(store, true);
+    }, [loadFolders, store]);
 
     const refresh = () => {
         setNotice('');
@@ -127,12 +132,14 @@ export default function MailPanel() {
                     setFolder(INBOX);
                     setView({kind: 'list'});
                     setReloadKey((k) => k + 1);
+                    loadUnread(store, true);
                 }}
                 onCancel={account ? () => setView({kind: 'list'}) : null}
                 onDisconnected={() => {
                     setAccount(null);
                     setFolders([]);
                     setView({kind: 'list'});
+                    setUnread(store, null);
                 }}
             />
         );
