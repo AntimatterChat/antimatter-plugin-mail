@@ -248,6 +248,7 @@ func (p *Plugin) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 		p.writeError(w, err)
 		return
 	}
+	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": newAccountView(account)})
 }
 
@@ -256,6 +257,7 @@ func (p *Plugin) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		p.writeError(w, err)
 		return
 	}
+	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": nil})
 }
 
@@ -539,7 +541,18 @@ func (p *Plugin) handleSend(w http.ResponseWriter, r *http.Request) {
 	p.writeJSON(w, map[string]any{"status": "ok", "saved_copy": savedCopy})
 }
 
+// handleGetUnread returns the unread count of the user's inbox. The webapp asks for it every few
+// minutes while it's open, which keeps the inbox watched: the user is then told when the count
+// changes. refresh=true skips the cached count, after the user read or moved messages.
 func (p *Plugin) handleGetUnread(w http.ResponseWriter, r *http.Request) {
+	p.unread.Touch(userID(r))
+	if r.URL.Query().Get("refresh") != "true" {
+		if unread, ok := p.unread.Cached(userID(r)); ok {
+			p.writeJSON(w, map[string]int{"unread": unread})
+			return
+		}
+	}
+
 	var unread int
 	err := p.withIMAP(userID(r), func(_ *Account, session *imapSession) error {
 		var err error
@@ -550,5 +563,6 @@ func (p *Plugin) handleGetUnread(w http.ResponseWriter, r *http.Request) {
 		p.writeError(w, err)
 		return
 	}
+	p.unread.Record(userID(r), unread)
 	p.writeJSON(w, map[string]int{"unread": unread})
 }

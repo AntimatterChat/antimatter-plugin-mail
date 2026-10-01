@@ -60,6 +60,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		limiter:          newConnLimiter(maxConnections, maxConnectionsPerUser, time.Second),
 	}
 	p.router = p.newRouter()
+	p.unread = newUnreadWatcher(p.checkUnread, p.publishUnread, func() time.Duration { return time.Minute })
 
 	imapServer := startIMAPServer(t, imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIMAP4rev2: {}}, "Sent", "Trash", "Lab")
 	smtpBackend, smtpSettings := startSMTPServer(t)
@@ -205,7 +206,11 @@ func TestAPIReadMail(t *testing.T) {
 	assert.Equal(t, 1, msg.RemoteImages)
 	require.Len(t, msg.Attachments, 1)
 
+	// The cached count is refreshed after reading
 	w = e.request(t, http.MethodGet, "/api/v1/unread", nil)
+	assert.JSONEq(t, `{"unread": 2}`, w.Body.String())
+	e.api.On("PublishWebSocketEvent", wsEventUnread, map[string]any{"unread": 1}, &model.WebsocketBroadcast{UserId: e.userID}).Once()
+	w = e.request(t, http.MethodGet, "/api/v1/unread?refresh=true", nil)
 	assert.JSONEq(t, `{"unread": 1}`, w.Body.String())
 
 	w = e.request(t, http.MethodGet, "/api/v1/message?folder=INBOX&uid=2&remote_images=true", nil)
@@ -233,7 +238,7 @@ func TestAPIOrganizeMail(t *testing.T) {
 
 	w := e.request(t, http.MethodPost, "/api/v1/messages/flag", messagesRequest{Folder: "INBOX", UIDs: []uint32{1, 2}, Flag: "seen", Value: true})
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	w = e.request(t, http.MethodGet, "/api/v1/unread", nil)
+	w = e.request(t, http.MethodGet, "/api/v1/unread?refresh=true", nil)
 	assert.JSONEq(t, `{"unread": 0}`, w.Body.String())
 
 	w = e.request(t, http.MethodPost, "/api/v1/messages/flag", messagesRequest{Folder: "INBOX", UIDs: []uint32{1}, Flag: "deleted", Value: true})
