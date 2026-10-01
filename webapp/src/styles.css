@@ -395,8 +395,24 @@
 
 .amm-field-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 90px;
+    grid-template-columns: minmax(0, 1fr) minmax(64px, 90px);
     gap: 10px;
+}
+
+/*
+ * Fields fit the panel: Fusion sizes its inputs and selects to their content, and a grid item is at
+ * least as wide as its content, so the security and port fields of a row overflowed narrow panels.
+ */
+.amm-root :is(.am-field, .amm-field) {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+}
+
+.amm-root :is(.am-field, .amm-field) :is(input, select, textarea) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* Fusion only styles text inputs: passwords look the same */
