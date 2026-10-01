@@ -31,14 +31,29 @@ type connLimiter struct {
 	slots   chan struct{}
 	maxUser int
 	wait    time.Duration
+
+	// reclaim closes an unused connection to give its slot back, when all the slots are taken. It
+	// returns false if there's none.
+	reclaim func() bool
 }
 
 func newConnLimiter(maxTotal, maxPerUser int, wait time.Duration) *connLimiter {
 	return &connLimiter{perUser: map[string]int{}, slots: make(chan struct{}, maxTotal), maxUser: maxPerUser, wait: wait}
 }
 
-// acquire takes a connection slot for a user. It returns the function that gives it back.
+// acquire takes a connection slot for a user, waiting for one if needed. It returns the function
+// that gives it back.
 func (l *connLimiter) acquire(userID string) (func(), error) {
+	return l.take(userID, true)
+}
+
+// tryAcquire takes a connection slot for a user if one is free right away, for connections that
+// can do without. It returns the function that gives it back.
+func (l *connLimiter) tryAcquire(userID string) (func(), error) {
+	return l.take(userID, false)
+}
+
+func (l *connLimiter) take(userID string, wait bool) (func(), error) {
 	l.mu.Lock()
 	if l.perUser[userID] >= l.maxUser {
 		l.mu.Unlock()
@@ -56,11 +71,7 @@ func (l *connLimiter) acquire(userID string) (func(), error) {
 		l.mu.Unlock()
 	}
 
-	timer := time.NewTimer(l.wait)
-	defer timer.Stop()
-	select {
-	case l.slots <- struct{}{}:
-	case <-timer.C:
+	if !l.takeSlot(wait) {
 		releaseUser()
 		return nil, errTooManyConnections
 	}
@@ -72,4 +83,33 @@ func (l *connLimiter) acquire(userID string) (func(), error) {
 			releaseUser()
 		})
 	}, nil
+}
+
+func (l *connLimiter) takeSlot(wait bool) bool {
+	select {
+	case l.slots <- struct{}{}:
+		return true
+	default:
+	}
+	if !wait {
+		return false
+	}
+
+	// Unused connections give their slots back before anyone waits
+	for l.reclaim != nil && l.reclaim() {
+		select {
+		case l.slots <- struct{}{}:
+			return true
+		default:
+		}
+	}
+
+	timer := time.NewTimer(l.wait)
+	defer timer.Stop()
+	select {
+	case l.slots <- struct{}{}:
+		return true
+	case <-timer.C:
+		return false
+	}
 }

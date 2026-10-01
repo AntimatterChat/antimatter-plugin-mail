@@ -12,6 +12,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -151,18 +152,56 @@ func (p *Plugin) withIMAP(userID string, f func(account *Account, session *imapS
 		return errNoAccount
 	}
 
+	conn, err := p.imapConn(userID, account)
+	if err != nil {
+		return err
+	}
+	if !conn.session.begin(operationTimeout) {
+		conn.close()
+		return connectionError("IMAP", errors.New("the connection was closed"))
+	}
+	err = f(account, conn.session)
+	conn.session.end()
+	if reusable(err) {
+		p.pool.put(userID, conn)
+	} else {
+		conn.close()
+	}
+	return err
+}
+
+// imapConn returns a connection to the user's IMAP server: an unused one if there's one, or a
+// new one.
+func (p *Plugin) imapConn(userID string, account *Account) (*pooledConn, error) {
+	key := account.connectionKey()
+	for {
+		conn := p.pool.take(userID, key)
+		if conn == nil {
+			break
+		}
+		if time.Since(conn.lastUsed) < poolCheckAfter {
+			return conn, nil
+		}
+		// The server may have dropped a connection unused for a while
+		conn.session.begin(poolCheckTimeout)
+		err := conn.session.client.Noop().Wait()
+		conn.session.end()
+		if err == nil {
+			return conn, nil
+		}
+		conn.close()
+	}
+
 	release, err := p.limiter.acquire(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer release()
-
 	session, err := dialIMAP(account.IMAP, account.IMAPPassword, p.imapOptions())
 	if err != nil {
-		return err
+		release()
+		return nil, err
 	}
-	defer session.Close()
-	return f(account, session)
+	return &pooledConn{session: session, release: release, key: key}, nil
 }
 
 func (p *Plugin) imapOptions() imapOptions {
@@ -249,6 +288,7 @@ func (p *Plugin) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 		p.writeError(w, err)
 		return
 	}
+	p.pool.drop(userID(r))
 	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": newAccountView(account)})
 }
@@ -258,6 +298,7 @@ func (p *Plugin) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		p.writeError(w, err)
 		return
 	}
+	p.pool.drop(userID(r))
 	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": nil})
 }

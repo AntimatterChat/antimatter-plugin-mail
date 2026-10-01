@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,9 @@ func (l literal) Size() int64 {
 type testIMAPServer struct {
 	user     *imapmemserver.User
 	settings ServerSettings
+
+	// connections counts the connections made to the server.
+	connections atomic.Int32
 }
 
 func startIMAPServer(t *testing.T, caps imap.CapSet, folders ...string) *testIMAPServer {
@@ -41,8 +45,10 @@ func startIMAPServer(t *testing.T, caps imap.CapSet, folders ...string) *testIMA
 		require.NoError(t, user.Create(name, nil))
 	}
 
+	testServer := &testIMAPServer{user: user}
 	server := imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			testServer.connections.Add(1)
 			return memServer.NewSession(), nil, nil
 		},
 		Caps:         caps,
@@ -56,10 +62,8 @@ func startIMAPServer(t *testing.T, caps imap.CapSet, folders ...string) *testIMA
 
 	host, port, _ := net.SplitHostPort(listener.Addr().String())
 	portNumber, _ := strconv.Atoi(port)
-	return &testIMAPServer{
-		user:     user,
-		settings: ServerSettings{Host: host, Port: portNumber, Security: SecurityNone, Username: "ada"},
-	}
+	testServer.settings = ServerSettings{Host: host, Port: portNumber, Security: SecurityNone, Username: "ada"}
+	return testServer
 }
 
 type discardLogger struct{}

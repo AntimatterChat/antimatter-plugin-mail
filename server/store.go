@@ -4,9 +4,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -77,6 +80,15 @@ type Account struct {
 
 	IMAPPassword string `json:"-"`
 	SMTPPassword string `json:"-"`
+}
+
+// connectionKey identifies the settings IMAP connections are made with: a connection made with
+// other settings mustn't be reused.
+func (a *Account) connectionKey() string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		a.IMAP.Host, strconv.Itoa(a.IMAP.Port), string(a.IMAP.Security), a.IMAP.Username, a.IMAPPassword,
+	}, "\x00")))
+	return hex.EncodeToString(sum[:])
 }
 
 // Validate checks the account settings, but not whether the servers accept them.

@@ -33,10 +33,12 @@ type Plugin struct {
 
 	store   *Store
 	limiter *connLimiter
+	pool    *imapPool
 	router  *mux.Router
 	unread  *unreadWatcher
 
-	// stopWatching stops the unread watcher, set while the plugin is active.
+	// stopWatching stops the unread watcher and the connection pool, set while the plugin is
+	// active.
 	stopWatching chan struct{}
 
 	// tlsConfig is nil for the default TLS configuration (tests set their own CA).
@@ -56,6 +58,8 @@ func (p *Plugin) OnActivate() error {
 
 	p.store = NewStore(p.API, box)
 	p.limiter = newConnLimiter(maxConnections, maxConnectionsPerUser, connectionWait)
+	p.pool = newIMAPPool()
+	p.limiter.reclaim = p.pool.evictOldest
 	p.router = p.newRouter()
 
 	p.unread = newUnreadWatcher(p.checkUnread, p.publishUnread, func() time.Duration {
@@ -63,6 +67,7 @@ func (p *Plugin) OnActivate() error {
 	})
 	p.stopWatching = make(chan struct{})
 	go p.unread.Run(p.stopWatching)
+	go p.pool.Run(p.stopWatching)
 	return nil
 }
 

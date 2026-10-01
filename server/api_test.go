@@ -58,7 +58,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		configuration:    &configuration{AllowPrivateNetworks: true, AllowInsecureConnections: true},
 		store:            NewStore(kv, box),
 		limiter:          newConnLimiter(maxConnections, maxConnectionsPerUser, time.Second),
+		pool:             newIMAPPool(),
 	}
+	p.limiter.reclaim = p.pool.evictOldest
+	t.Cleanup(p.pool.closeAll)
 	p.router = p.newRouter()
 	p.unread = newUnreadWatcher(p.checkUnread, p.publishUnread, func() time.Duration { return time.Minute })
 

@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	// sessionLifetime bounds how long an IMAP connection stays open, so that a stuck server
-	// can't hold a request forever.
-	sessionLifetime = 2 * time.Minute
+	// operationTimeout bounds how long the operations of a request can use an IMAP connection,
+	// so that a stuck server can't hold a request forever: the connection is closed then.
+	operationTimeout = 2 * time.Minute
 
 	// maxStatusFolders is the number of folders whose counts are fetched one by one on servers
 	// that can't return them with the folder list.
@@ -88,7 +88,9 @@ type imapOptions struct {
 type imapSession struct {
 	client    *imapclient.Client
 	closeOnce sync.Once
-	timer     *time.Timer
+
+	// deadline closes the connection when an operation takes too long.
+	deadline *time.Timer
 }
 
 func connectionError(what string, err error) error {
@@ -127,7 +129,7 @@ func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imap
 	}
 
 	session := &imapSession{client: client}
-	session.timer = time.AfterFunc(sessionLifetime, session.close)
+	session.deadline = time.AfterFunc(operationTimeout, session.close)
 
 	if err := client.WaitGreeting(); err != nil {
 		session.close()
@@ -146,9 +148,31 @@ func dialIMAP(settings ServerSettings, password string, opts imapOptions) (*imap
 
 func (s *imapSession) close() {
 	s.closeOnce.Do(func() {
-		s.timer.Stop()
+		s.deadline.Stop()
 		_ = s.client.Close()
 	})
+}
+
+// begin starts an operation that must end within the given time, after which the connection is
+// closed. It returns false if the connection is already closed.
+func (s *imapSession) begin(timeout time.Duration) bool {
+	s.deadline.Reset(timeout)
+	return !s.isClosed()
+}
+
+// end ends an operation started with begin.
+func (s *imapSession) end() {
+	s.deadline.Stop()
+}
+
+// isClosed returns whether the connection is closed, by us or by the server.
+func (s *imapSession) isClosed() bool {
+	select {
+	case <-s.client.Closed():
+		return true
+	default:
+		return false
+	}
 }
 
 // Close logs out and closes the connection.
@@ -282,6 +306,10 @@ func setCounts(folder *Folder, status *imap.StatusData) {
 
 // Unread returns the number of unread messages of a folder.
 func (s *imapSession) Unread(folder string) (int, error) {
+	// STATUS mustn't be used on the selected folder, which a reused connection may have
+	if selected := s.client.Mailbox(); selected != nil && selected.Name == folder {
+		return s.unreadSelected()
+	}
 	status, err := s.client.Status(folder, &imap.StatusOptions{NumUnseen: true}).Wait()
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to get the folder status")
@@ -290,6 +318,23 @@ func (s *imapSession) Unread(folder string) (int, error) {
 		return 0, nil
 	}
 	return int(*status.NumUnseen), nil
+}
+
+// unreadSelected returns the number of unread messages of the selected folder.
+func (s *imapSession) unreadSelected() (int, error) {
+	options := &imap.SearchOptions{}
+	esearch := s.client.Caps().Has(imap.CapESearch)
+	if esearch {
+		options.ReturnCount = true
+	}
+	data, err := s.client.Search(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, options).Wait()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count the unread messages")
+	}
+	if esearch {
+		return int(data.Count), nil
+	}
+	return len(data.AllSeqNums()), nil
 }
 
 func (s *imapSession) selectFolder(folder string, readOnly bool) (*imap.SelectData, error) {
