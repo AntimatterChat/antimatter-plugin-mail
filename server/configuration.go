@@ -5,6 +5,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -33,6 +34,16 @@ type configuration struct {
 
 	// MaxMessageSizeMB is the largest message the plugin opens.
 	MaxMessageSizeMB int
+
+	// The OAuth 2.0 clients users sign in to Google and Microsoft with. A provider is offered
+	// when its client ID and secret are set.
+	GoogleClientID        string
+	GoogleClientSecret    string
+	MicrosoftClientID     string
+	MicrosoftClientSecret string
+	// MicrosoftTenant is the Microsoft Entra tenant users sign in to: "common" (the default) for
+	// any work, school or personal account, "organizations", "consumers", or a tenant ID or domain.
+	MicrosoftTenant string
 }
 
 const (
@@ -54,6 +65,31 @@ func (c *configuration) maxMessageSize() int64 {
 		return defaultMaxMessageSizeMB << 20
 	}
 	return int64(c.MaxMessageSizeMB) << 20
+}
+
+// oauthClient returns the OAuth 2.0 client ID and secret of a provider, empty if it isn't set up.
+func (c *configuration) oauthClient(provider string) (string, string) {
+	var id, secret string
+	switch provider {
+	case providerGoogle:
+		id, secret = c.GoogleClientID, c.GoogleClientSecret
+	case providerMicrosoft:
+		id, secret = c.MicrosoftClientID, c.MicrosoftClientSecret
+	}
+	id, secret = strings.TrimSpace(id), strings.TrimSpace(secret)
+	if id == "" || secret == "" {
+		return "", ""
+	}
+	return id, secret
+}
+
+// microsoftTenant returns the Microsoft Entra tenant users sign in to.
+func (c *configuration) microsoftTenant() string {
+	tenant := strings.TrimSpace(c.MicrosoftTenant)
+	if tenant == "" {
+		return "common"
+	}
+	return tenant
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if

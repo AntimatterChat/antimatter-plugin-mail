@@ -25,6 +25,8 @@ const (
 // ClientConfig is the part of the plugin configuration clients need.
 type ClientConfig struct {
 	AllowInsecureConnections bool `json:"allow_insecure_connections"`
+	// OAuthProviders are the providers users can sign in with.
+	OAuthProviders []oauthProviderInfo `json:"oauth_providers"`
 }
 
 // accountView is an account as shown to its user, without the passwords.
@@ -33,13 +35,19 @@ type accountView struct {
 	Name  string         `json:"name"`
 	IMAP  ServerSettings `json:"imap"`
 	SMTP  ServerSettings `json:"smtp"`
+	// OAuthProvider is the provider the user signed in with, if any.
+	OAuthProvider string `json:"oauth_provider,omitempty"`
 }
 
 func newAccountView(a *Account) *accountView {
 	if a == nil {
 		return nil
 	}
-	return &accountView{Email: a.Email, Name: a.Name, IMAP: a.IMAP, SMTP: a.SMTP}
+	view := &accountView{Email: a.Email, Name: a.Name, IMAP: a.IMAP, SMTP: a.SMTP}
+	if a.OAuth != nil {
+		view.OAuthProvider = a.OAuth.Provider
+	}
+	return view
 }
 
 // accountRequest saves an account. Empty passwords keep the stored ones.
@@ -98,6 +106,10 @@ func (p *Plugin) newRouter() *mux.Router {
 	api.HandleFunc("/draft", p.handleDeleteDraft).Methods(http.MethodDelete)
 	api.HandleFunc("/unread", p.handleGetUnread).Methods(http.MethodGet)
 	api.HandleFunc("/share", p.handleShare).Methods(http.MethodPost)
+	api.HandleFunc("/oauth/{provider}/start", p.handleStartOAuth).Methods(http.MethodPost)
+
+	// Providers send users back here after they signed in
+	router.HandleFunc(oauthCallbackPath, p.handleOAuthCallback).Methods(http.MethodGet)
 
 	return router
 }
@@ -219,7 +231,11 @@ const (
 )
 
 // credentials returns the credentials to sign in to the user's IMAP or SMTP server with.
-func (p *Plugin) credentials(_ string, account *Account, kind serverKind) (credentials, error) {
+func (p *Plugin) credentials(userID string, account *Account, kind serverKind) (credentials, error) {
+	if account.OAuth != nil {
+		token, err := p.accessToken(userID, account)
+		return credentials{token: token}, err
+	}
 	if kind == kindSMTP {
 		return passwordCredentials(account.SMTPPassword), nil
 	}
@@ -237,7 +253,10 @@ func (p *Plugin) smtpOptions() smtpOptions {
 }
 
 func (p *Plugin) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
-	p.writeJSON(w, ClientConfig{AllowInsecureConnections: p.getConfiguration().AllowInsecureConnections})
+	p.writeJSON(w, ClientConfig{
+		AllowInsecureConnections: p.getConfiguration().AllowInsecureConnections,
+		OAuthProviders:           p.availableProviders(),
+	})
 }
 
 func (p *Plugin) handleGetAccount(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +278,21 @@ func (p *Plugin) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 	existing, err := p.store.GetAccount(userID(r))
 	if err != nil {
 		// An account that can't be decrypted any more is replaced
+		existing = nil
+	}
+
+	// Accounts signed in with a provider only change their name; giving passwords replaces them
+	if existing != nil && existing.OAuth != nil && req.OAuthProvider == existing.OAuth.Provider &&
+		req.Email == existing.Email && req.IMAPPassword == "" && req.SMTPPassword == "" {
+		existing.Name = req.Name
+		if err := p.store.SaveAccount(userID(r), existing); err != nil {
+			p.writeError(w, err)
+			return
+		}
+		p.writeJSON(w, map[string]any{"account": newAccountView(existing)})
+		return
+	}
+	if existing != nil && existing.OAuth != nil {
 		existing = nil
 	}
 
@@ -311,6 +345,7 @@ func (p *Plugin) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.pool.drop(userID(r))
+	p.tokens.forget(userID(r))
 	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": newAccountView(account)})
 }
@@ -321,6 +356,7 @@ func (p *Plugin) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.pool.drop(userID(r))
+	p.tokens.forget(userID(r))
 	p.unread.Forget(userID(r))
 	p.writeJSON(w, map[string]any{"account": nil})
 }

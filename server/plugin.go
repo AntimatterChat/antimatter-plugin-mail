@@ -34,8 +34,12 @@ type Plugin struct {
 	store   *Store
 	limiter *connLimiter
 	pool    *imapPool
+	tokens  *tokenCache
 	router  *mux.Router
 	unread  *unreadWatcher
+
+	// providers are the providers users can sign in with (tests set their own).
+	providers map[string]*oauthProvider
 
 	// stopWatching stops the unread watcher and the connection pool, set while the plugin is
 	// active.
@@ -59,6 +63,8 @@ func (p *Plugin) OnActivate() error {
 	p.store = NewStore(p.API, box)
 	p.limiter = newConnLimiter(maxConnections, maxConnectionsPerUser, connectionWait)
 	p.pool = newIMAPPool()
+	p.tokens = newTokenCache()
+	p.providers = builtinProviders
 	p.limiter.reclaim = p.pool.evictOldest
 	p.router = p.newRouter()
 

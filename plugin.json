@@ -20,7 +20,7 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "Users connect their own mailbox over IMAP (reading) and SMTP (sending). Passwords are stored encrypted; users should use app passwords where their provider offers them.",
+        "header": "Users connect their own mailbox over IMAP (reading) and SMTP (sending), with a password or by signing in with Google or Microsoft once set up below. Passwords and sign-ins are stored encrypted; users should use app passwords where their provider offers them.",
         "footer": "",
         "settings": [
             {
@@ -50,6 +50,43 @@
                 "type": "number",
                 "default": 25,
                 "help_text": "Messages larger than this can't be opened in Antimatter."
+            },
+            {
+                "key": "GoogleClientID",
+                "display_name": "Google OAuth client ID",
+                "type": "text",
+                "default": "",
+                "help_text": "Lets users connect a Gmail or Google Workspace mailbox by signing in with Google, rather than with an app password. Create an OAuth client of type \"Web application\" in the Google Cloud console, with the redirect URI <Site URL>/plugins/com.antimatterchat.mail/oauth/callback, and enable the Gmail API. See the plugin's README."
+            },
+            {
+                "key": "GoogleClientSecret",
+                "display_name": "Google OAuth client secret",
+                "type": "text",
+                "secret": true,
+                "default": "",
+                "help_text": "The secret of the Google OAuth client."
+            },
+            {
+                "key": "MicrosoftClientID",
+                "display_name": "Microsoft OAuth client ID",
+                "type": "text",
+                "default": "",
+                "help_text": "Lets users connect an Outlook.com or Microsoft 365 mailbox by signing in with Microsoft. Register an application in Microsoft Entra ID with the Web redirect URI <Site URL>/plugins/com.antimatterchat.mail/oauth/callback and the delegated permissions IMAP.AccessAsUser.All and SMTP.Send. See the plugin's README."
+            },
+            {
+                "key": "MicrosoftClientSecret",
+                "display_name": "Microsoft OAuth client secret",
+                "type": "text",
+                "secret": true,
+                "default": "",
+                "help_text": "A client secret of the Microsoft application."
+            },
+            {
+                "key": "MicrosoftTenant",
+                "display_name": "Microsoft tenant",
+                "type": "text",
+                "default": "common",
+                "help_text": "Who can sign in with Microsoft: \"common\" for any work, school or personal account, \"organizations\" for work and school accounts, \"consumers\" for personal accounts, or your tenant ID or domain for your organization only."
             }
         ]
     }

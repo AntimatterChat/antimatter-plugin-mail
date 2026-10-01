@@ -61,6 +61,8 @@ func newTestEnv(t *testing.T) *testEnv {
 		store:            NewStore(kv, box),
 		limiter:          newConnLimiter(maxConnections, maxConnectionsPerUser, time.Second),
 		pool:             newIMAPPool(),
+		tokens:           newTokenCache(),
+		providers:        builtinProviders,
 	}
 	p.limiter.reclaim = p.pool.evictOldest
 	t.Cleanup(p.pool.closeAll)

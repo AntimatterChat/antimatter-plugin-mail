@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/pkg/errors"
@@ -19,6 +20,9 @@ import (
 const (
 	// accountKeyPrefix prefixes the key of the mail account of each user.
 	accountKeyPrefix = "account_"
+	// oauthStateKeyPrefix prefixes the keys of the sign-ins with a provider in progress, by
+	// state.
+	oauthStateKeyPrefix = "oauth_state_"
 
 	atomicUpdateAttempts = 5
 )
@@ -223,4 +227,40 @@ func (s *Store) DeleteAccount(userID string) error {
 		return errors.Wrap(appErr, "failed to delete the mail account")
 	}
 	return nil
+}
+
+// SaveOAuthState keeps a sign-in with a provider in progress until it ends, for a while.
+func (s *Store) SaveOAuthState(state string, data *oauthState) error {
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode the sign-in state")
+	}
+	options := model.PluginKVSetOptions{ExpireInSeconds: int64(oauthStateLifetime / time.Second)}
+	if _, appErr := s.kv.KVSetWithOptions(oauthStateKeyPrefix+state, encoded, options); appErr != nil {
+		return errors.Wrap(appErr, "failed to save the sign-in state")
+	}
+	return nil
+}
+
+// TakeOAuthState returns and forgets a sign-in in progress, or nil if there's none.
+func (s *Store) TakeOAuthState(state string) (*oauthState, error) {
+	if state == "" || len(state) > 64 {
+		return nil, nil
+	}
+	key := oauthStateKeyPrefix + state
+	data, appErr := s.kv.KVGet(key)
+	if appErr != nil {
+		return nil, errors.Wrap(appErr, "failed to read the sign-in state")
+	}
+	if data == nil {
+		return nil, nil
+	}
+	if appErr := s.kv.KVDelete(key); appErr != nil {
+		return nil, errors.Wrap(appErr, "failed to delete the sign-in state")
+	}
+	var stored oauthState
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return nil, errors.Wrap(err, "invalid sign-in state")
+	}
+	return &stored, nil
 }
