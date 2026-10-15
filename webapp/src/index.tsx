@@ -13,6 +13,7 @@ import MailPanel from './components/mail_panel';
 import manifest from './manifest';
 import reducer, {getUnread} from './reducer';
 import type {PluginClass, PluginRegistry, PluginStore, RightHandSidebarRegistration, WebSocketMessage} from './types/host';
+import {registerTranslations} from './translations';
 
 import './styles.css';
 
@@ -25,6 +26,8 @@ export default class Plugin implements PluginClass {
     private appBarId = '';
 
     public initialize(registry: PluginRegistry, store: PluginStore) {
+        registerTranslations(registry);
+
         if (window.basename) {
             Client4.setUrl(window.basename);
         }
