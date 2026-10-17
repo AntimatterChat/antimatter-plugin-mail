@@ -2,13 +2,16 @@
 // See LICENSE.txt for license information.
 
 import React, {useCallback, useEffect, useState} from 'react';
-import {useIntl} from 'react-intl';
+import {useIntl, type IntlShape} from 'react-intl';
 
 import {am, own} from '../class_names';
 import * as client from '../client';
 import type {Folder, MessageSummary} from '../client';
 import {displayName, hue, initials, listDate} from '../utils';
 
+import {confirmDialog} from './fusion/confirm_dialog';
+import EmptyState from './fusion/empty_state';
+import {iconTip} from './fusion/tip';
 import Icon from './icon';
 import {messages} from './messages';
 
@@ -39,6 +42,18 @@ function chunks(uids: number[]) {
         result.push(uids.slice(i, i + MAX_UIDS));
     }
     return result;
+}
+
+// confirmDeleteForever asks before deleting messages of the trash, which can't be undone.
+export function confirmDeleteForever(formatMessage: IntlShape['formatMessage'], count: number) {
+    return confirmDialog({
+        title: formatMessage(messages.deleteForeverTitle, {count}),
+        message: formatMessage(messages.deleteForeverLead, {count}),
+        confirmLabel: formatMessage(messages.delete),
+        cancelLabel: formatMessage(messages.cancel),
+        danger: true,
+        icon: 'trash',
+    });
 }
 
 export function useFolderName() {
@@ -99,7 +114,10 @@ function MessageRow({message, sentFolder, selected, onSelect, onOpen}: RowProps)
                 </span>
                 <span className={am('sub')}>
                     {message.has_attachments && (
-                        <span title={formatMessage(messages.hasAttachments)}>
+                        <span
+                            role='img'
+                            {...iconTip(formatMessage(messages.hasAttachments))}
+                        >
                             <Icon
                                 name='attach'
                                 size='xs'
@@ -110,7 +128,8 @@ function MessageRow({message, sentFolder, selected, onSelect, onOpen}: RowProps)
                         <span
                             className={am('dot-u')}
                             style={{display: 'inline-block', marginRight: 6}}
-                            title={formatMessage(messages.unreadMessage)}
+                            role='img'
+                            {...iconTip(formatMessage(messages.unreadMessage))}
                         />
                     )}
                     {date.kind === 'yesterday' ? formatMessage(messages.yesterday) : date.text}
@@ -214,9 +233,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
     );
     const deleteSelected = async () => {
         const count = selected.size;
-
-        // eslint-disable-next-line no-alert
-        if (current?.role === 'trash' && !window.confirm(formatMessage(messages.deleteSelectedForever, {count}))) {
+        if (current?.role === 'trash' && !(await confirmDeleteForever(formatMessage, count))) {
             return;
         }
         const deleted = await act(
@@ -249,8 +266,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                 <span className={am('grow')}/>
                 <button
                     className={am('icon-btn', {on: searching})}
-                    title={formatMessage(messages.search)}
-                    aria-label={formatMessage(messages.search)}
+                    {...iconTip(formatMessage(messages.search))}
                     aria-pressed={searching}
                     onClick={() => {
                         if (searching) {
@@ -264,24 +280,21 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                 </button>
                 <button
                     className={am('icon-btn')}
-                    title={formatMessage(messages.compose)}
-                    aria-label={formatMessage(messages.compose)}
+                    {...iconTip(formatMessage(messages.compose))}
                     onClick={onCompose}
                 >
                     <Icon name='pen'/>
                 </button>
                 <button
                     className={am('icon-btn')}
-                    title={formatMessage(messages.refresh)}
-                    aria-label={formatMessage(messages.refresh)}
+                    {...iconTip(formatMessage(messages.refresh))}
                     onClick={onRefresh}
                 >
                     <Icon name='refresh'/>
                 </button>
                 <button
                     className={am('icon-btn')}
-                    title={formatMessage(messages.settings)}
-                    aria-label={formatMessage(messages.settings)}
+                    {...iconTip(formatMessage(messages.settings))}
                     onClick={onSettings}
                 >
                     <Icon name='cog'/>
@@ -310,8 +323,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                         <button
                             type='button'
                             className={am('icon-btn')}
-                            title={formatMessage(messages.clearSearch)}
-                            aria-label={formatMessage(messages.clearSearch)}
+                            {...iconTip(formatMessage(messages.clearSearch))}
                             onClick={() => {
                                 setSearch('');
                                 setSearchText('');
@@ -331,8 +343,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                         type='checkbox'
                         className={own('row-check')}
                         checked={allSelected}
-                        aria-label={formatMessage(messages.selectAll)}
-                        title={formatMessage(messages.selectAll)}
+                        {...iconTip(formatMessage(messages.selectAll))}
                         onChange={(e) => setSelected(new Set(e.target.checked ? list?.map((m) => m.uid) : []))}
                     />
                 )}
@@ -359,8 +370,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     </button>
                     <button
                         className={am('icon-btn')}
-                        title={formatMessage(messages.delete)}
-                        aria-label={formatMessage(messages.delete)}
+                        {...iconTip(formatMessage(messages.delete))}
                         disabled={busy}
                         onClick={deleteSelected}
                     >
@@ -368,8 +378,7 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     </button>
                     <button
                         className={am('icon-btn')}
-                        title={formatMessage(messages.clearSelection)}
-                        aria-label={formatMessage(messages.clearSelection)}
+                        {...iconTip(formatMessage(messages.clearSelection))}
                         onClick={() => setSelected(new Set())}
                     >
                         <Icon name='x'/>
@@ -388,8 +397,21 @@ export default function MessageList({folder, folders, reloadKey, onFolderChange,
                     </button>
                 </div>
             )}
-            {list === null && !error && <div className={am('empty')}>{formatMessage(messages.loading)}</div>}
-            {list && list.length === 0 && !search && <div className={am('empty')}>{formatMessage(messages.emptyFolder)}</div>}
+            {list === null && !error && (
+                <EmptyState
+                    busy={true}
+                    text={formatMessage(messages.loading)}
+                    classicClassName={am('empty')}
+                />
+            )}
+            {list && list.length === 0 && !search && (
+                <EmptyState
+                    data-testid='mail-folder-empty'
+                    icon={<Icon name='inbox'/>}
+                    text={formatMessage(messages.emptyFolder)}
+                    classicClassName={am('empty')}
+                />
+            )}
             {list?.map((message) => (
                 <MessageRow
                     key={message.uid}

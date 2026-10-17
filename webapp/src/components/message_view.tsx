@@ -7,10 +7,13 @@ import {useIntl} from 'react-intl';
 import {am, own} from '../class_names';
 import * as client from '../client';
 import type {Folder, FullMessage} from '../client';
+import {frameLinkColor} from '../frame_style';
 import {displayName, formatAddresses, formatSize, fullDate, hue, initials} from '../utils';
 
+import EmptyState from './fusion/empty_state';
+import {iconTip, tip} from './fusion/tip';
 import Icon from './icon';
-import {useFolderName} from './message_list';
+import {confirmDeleteForever, useFolderName} from './message_list';
 import {messages} from './messages';
 import ShareForm from './share_form';
 
@@ -28,14 +31,17 @@ type Props = {
 
 // frameDocument wraps the sanitised HTML of a message for a sandboxed frame. The frame runs no
 // script; its content security policy only lets it load the message's embedded images, and remote
-// images when the user asked for them.
-function frameDocument(html: string, remoteImages: boolean): string {
+// images when the user asked for them. Its links take the web UI's link colour (frameLinkColor, always a #rrggbb
+// colour).
+export function frameDocument(html: string, remoteImages: boolean, linkColor = frameLinkColor()): string {
     const imgSrc = remoteImages ? 'data: https: http:' : 'data:';
     return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
         `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'; font-src data:">` +
         '<base target="_blank">' +
         '<style>html,body{margin:0;padding:0;background:#fff;color:#1b1b1f;}body{padding:14px 16px;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-wrap:anywhere;}' +
-        'img{max-width:100%;height:auto;}table{max-width:100%;}pre{white-space:pre-wrap;}a{color:#1c58d9;}blockquote{margin:0 0 0 8px;padding-left:10px;border-left:3px solid #ccc;color:#555;}</style>' +
+        'img{max-width:100%;height:auto;}table{max-width:100%;}pre{white-space:pre-wrap;}' +
+        `a{color:${linkColor};}` +
+        'blockquote{margin:0 0 0 8px;padding-left:10px;border-left:3px solid #ccc;color:#555;}</style>' +
         `</head><body>${html}</body></html>`;
 }
 
@@ -120,9 +126,8 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
     };
 
     const current = folders.find((f) => f.name === folder);
-    const deleteMessage = () => {
-        // eslint-disable-next-line no-alert
-        if (current?.role === 'trash' && !window.confirm(formatMessage(messages.deleteForever))) {
+    const deleteMessage = async () => {
+        if (current?.role === 'trash' && !(await confirmDeleteForever(formatMessage, 1))) {
             return;
         }
         run(() => client.deleteMessages(folder, [uid]), onBack);
@@ -136,8 +141,7 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
             <div className={own('toolbar')}>
                 <button
                     className={am('icon-btn')}
-                    title={formatMessage(messages.back)}
-                    aria-label={formatMessage(messages.back)}
+                    {...iconTip(formatMessage(messages.back))}
                     onClick={onBack}
                 >
                     <Icon name='back'/>
@@ -147,32 +151,28 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                     <>
                         <button
                             className={am('icon-btn')}
-                            title={formatMessage(messages.reply)}
-                            aria-label={formatMessage(messages.reply)}
+                            {...iconTip(formatMessage(messages.reply))}
                             onClick={() => onReply(msg, false)}
                         >
                             <Icon name='reply'/>
                         </button>
                         <button
                             className={am('icon-btn')}
-                            title={formatMessage(messages.replyAll)}
-                            aria-label={formatMessage(messages.replyAll)}
+                            {...iconTip(formatMessage(messages.replyAll))}
                             onClick={() => onReply(msg, true)}
                         >
                             <Icon name='undo'/>
                         </button>
                         <button
                             className={am('icon-btn')}
-                            title={formatMessage(messages.forward)}
-                            aria-label={formatMessage(messages.forward)}
+                            {...iconTip(formatMessage(messages.forward))}
                             onClick={() => onForward(msg)}
                         >
                             <Icon name='forward'/>
                         </button>
                         <button
                             className={am('icon-btn', {on: sharing})}
-                            title={formatMessage(messages.share)}
-                            aria-label={formatMessage(messages.share)}
+                            {...iconTip(formatMessage(messages.share))}
                             aria-pressed={sharing}
                             onClick={() => setSharing(!sharing)}
                         >
@@ -180,8 +180,7 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                         </button>
                         <button
                             className={am('icon-btn')}
-                            title={formatMessage(messages.markUnread)}
-                            aria-label={formatMessage(messages.markUnread)}
+                            {...iconTip(formatMessage(messages.markUnread))}
                             disabled={busy}
                             onClick={() => run(() => client.setFlag(folder, [uid], 'seen', false), onBack)}
                         >
@@ -189,8 +188,7 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                         </button>
                         <button
                             className={am('icon-btn')}
-                            title={formatMessage(messages.delete)}
-                            aria-label={formatMessage(messages.delete)}
+                            {...iconTip(formatMessage(messages.delete))}
                             disabled={busy}
                             onClick={deleteMessage}
                         >
@@ -200,7 +198,13 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                 )}
             </div>
             {error && <div className={own('error')}>{error}</div>}
-            {!msg && !error && <div className={am('empty')}>{formatMessage(messages.loading)}</div>}
+            {!msg && !error && (
+                <EmptyState
+                    busy={true}
+                    text={formatMessage(messages.loading)}
+                    classicClassName={am('empty')}
+                />
+            )}
             {msg && (
                 <>
                     <h3 className={own('subject')}>{msg.subject || formatMessage(messages.noSubject)}</h3>
@@ -213,7 +217,7 @@ export default function MessageView({folder, uid, folders, onBack, onReply, onFo
                             {initials(senderName)}
                         </span>
                         <div className={own('header-text')}>
-                            <b title={sender?.email}>{senderName}</b>
+                            <b {...(sender?.email ? tip(sender.email) : {})}>{senderName}</b>
                             {sender?.name && <span className={am('sub')}>{` <${sender.email}>`}</span>}
                             <div className={am('sub')}>
                                 {formatMessage(messages.to)}{': '}{formatAddresses(msg.to)}

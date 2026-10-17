@@ -9,6 +9,7 @@ import * as client from '../client';
 import type {Account, AccountRequest, OAuthProvider, Security, ServerSettings} from '../client';
 import manifest from '../manifest';
 
+import {confirmDialog} from './fusion/confirm_dialog';
 import {messages} from './messages';
 
 const defaultPorts: Record<'imap' | 'smtp', Record<Security, number>> = {
@@ -172,8 +173,14 @@ export default function AccountForm({account, allowInsecure, providers, onSaved,
     };
 
     const disconnect = async () => {
-        // eslint-disable-next-line no-alert
-        if (!window.confirm(formatMessage(messages.disconnectConfirm))) {
+        const yes = await confirmDialog({
+            title: formatMessage(messages.disconnectTitle),
+            message: formatMessage(messages.disconnectLead),
+            confirmLabel: formatMessage(messages.disconnect),
+            cancelLabel: formatMessage(messages.cancel),
+            danger: true,
+        });
+        if (!yes) {
             return;
         }
         try {

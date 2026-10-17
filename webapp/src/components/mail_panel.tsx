@@ -15,6 +15,7 @@ import {isFusionUI} from '../web_ui';
 
 import AccountForm from './account_form';
 import Compose from './compose';
+import EmptyState from './fusion/empty_state';
 import MessageList from './message_list';
 import MessageView from './message_view';
 import {messages} from './messages';
@@ -26,6 +27,9 @@ type View =
     {kind: 'settings'};
 
 const INBOX = 'INBOX';
+
+// Mail's colour in the Fusion UI (its app rail icon), for Fusion's parts that take the app's colour (--am-cc).
+export const APP_COLOR = '#2DD4BF';
 
 // MailPanel is the mail app, shown in the right-hand panel.
 export default function MailPanel() {
@@ -140,7 +144,13 @@ export default function MailPanel() {
             </div>
         );
     } else if (!loaded) {
-        content = <div className={am('empty')}>{formatMessage(messages.loading)}</div>;
+        content = (
+            <EmptyState
+                busy={true}
+                text={formatMessage(messages.loading)}
+                classicClassName={am('empty')}
+            />
+        );
     } else if (account === null || view.kind === 'settings') {
         content = (
             <AccountForm
@@ -213,7 +223,10 @@ export default function MailPanel() {
     }
 
     return (
-        <div className={own('root', {fusion: isFusionUI(), classic: !isFusionUI()})}>
+        <div
+            className={own('root', {fusion: isFusionUI(), classic: !isFusionUI()})}
+            style={{'--am-cc': APP_COLOR} as React.CSSProperties}
+        >
             {notice && (
                 <div
                     className={own('notice', 'toast')}

@@ -9,6 +9,8 @@ import * as client from '../client';
 import type {OutgoingMessage} from '../client';
 import {draftContent, formatSize, movedAttachments, parseAddresses, type Draft} from '../utils';
 
+import {confirmDialog} from './fusion/confirm_dialog';
+import {iconTip} from './fusion/tip';
 import Icon from './icon';
 import {messages} from './messages';
 
@@ -135,10 +137,18 @@ export default function Compose({draft: initial, onSent, onClose}: Props) {
 
     const discard = async () => {
         const changed = draftContent(draft) !== draftContent(initial);
-
-        // eslint-disable-next-line no-alert
-        if ((changed || messageId.current) && !window.confirm(formatMessage(messages.discardConfirm))) {
-            return;
+        if (changed || messageId.current) {
+            const yes = await confirmDialog({
+                title: formatMessage(messages.discardTitle),
+                message: formatMessage(messages.discardLead),
+                confirmLabel: formatMessage(messages.discard),
+                cancelLabel: formatMessage(messages.cancel),
+                danger: true,
+                icon: 'trash',
+            });
+            if (!yes) {
+                return;
+            }
         }
         done.current = true;
         await saving.current;
@@ -195,8 +205,7 @@ export default function Compose({draft: initial, onSent, onClose}: Props) {
                 <button
                     type='button'
                     className={am('icon-btn')}
-                    title={formatMessage(messages.saveAndClose)}
-                    aria-label={formatMessage(messages.saveAndClose)}
+                    {...iconTip(formatMessage(messages.saveAndClose))}
                     disabled={sending}
                     onClick={close}
                 >
@@ -263,8 +272,7 @@ export default function Compose({draft: initial, onSent, onClose}: Props) {
                             <button
                                 type='button'
                                 className={own('attachment-remove')}
-                                title={formatMessage(messages.removeAttachment, {filename: a.filename})}
-                                aria-label={formatMessage(messages.removeAttachment, {filename: a.filename})}
+                                {...iconTip(formatMessage(messages.removeAttachment, {filename: a.filename}))}
                                 onClick={() => setDraft({...draft, attachments: draft.attachments?.filter((other) => other.key !== a.key)})}
                             >
                                 <Icon

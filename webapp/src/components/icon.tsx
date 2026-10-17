@@ -4,8 +4,9 @@
 import React from 'react';
 
 import {am} from '../class_names';
+import {isFusionUI} from '../web_ui';
 
-// The icons of the Fusion mockup the mail panel uses (shapes written as paths).
+// The icons of the Fusion mockup the mail panel uses, as paths for the classic UI, which has no Fusion sprite.
 const paths: Record<string, React.ReactNode> = {
     mail: (<path d='M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm-1 2 8 6 8-6'/>),
     pen: (<><path d='M4 20h4L19 9l-4-4L4 16z'/><path d='m13 7 4 4'/></>),
@@ -29,17 +30,53 @@ const paths: Record<string, React.ReactNode> = {
 
 export type IconName = keyof typeof paths;
 
+// The symbols of Fusion's icon sprite (#am-i-<name>) drawn under Fusion, and how they're turned: back is the sprite's
+// chevron (which points down) turned. Fusion's sprite has no refresh arrows, which keep their own drawing.
+const sprite: Partial<Record<IconName, {name: string; turn?: number}>> = {
+    mail: {name: 'mail'},
+    pen: {name: 'pen'},
+    cog: {name: 'cog'},
+    undo: {name: 'undo'},
+    reply: {name: 'reply'},
+    forward: {name: 'forward'},
+    trash: {name: 'trash'},
+    folder: {name: 'folder'},
+    send: {name: 'send'},
+    export: {name: 'export'},
+    attach: {name: 'attach'},
+    inbox: {name: 'inbox'},
+    flag: {name: 'flag'},
+    x: {name: 'x'},
+    search: {name: 'search'},
+    chev: {name: 'chev'},
+    back: {name: 'chev', turn: 90},
+};
+
 type Props = {
     name: IconName;
     size?: 'sm' | 'xs';
 };
 
 export default function Icon({name, size}: Props) {
+    const symbol = isFusionUI() ? sprite[name] : null;
+    if (symbol) {
+        return (
+            <svg
+                className={am('ic', size)}
+                aria-hidden='true'
+                data-icon={name}
+                style={symbol.turn ? {transform: `rotate(${symbol.turn}deg)`} : {}}
+            >
+                <use href={`#am-i-${symbol.name}`}/>
+            </svg>
+        );
+    }
     return (
         <svg
             className={am('ic', size)}
             viewBox='0 0 24 24'
             aria-hidden='true'
+            data-icon={name}
         >
             {paths[name]}
         </svg>
